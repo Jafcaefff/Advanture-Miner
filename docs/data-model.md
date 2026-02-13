@@ -1,69 +1,150 @@
-# 数据模型（草案）
+# 数据模型（开工版，MVP）
 
-当前阶段目标是：账号 + 英雄收集 + 队伍配置 + 战斗回放可审计。下面是偏“可落库”的最小集合；具体字段可按实现选择 SQLite/Postgres 做微调。
+目标：账号 + 英雄内容/实例 + 25 人队伍配置 + 战斗回放可审计。
 
-## 表：users
+本文以“可用 SQLite 先跑、可平滑迁移 Postgres”为前提，字段类型以伪 SQL 表达。
 
-- `id` (PK)
-- `username` (unique)
-- `password_hash`
-- `created_at`
+## 设计约定
 
-## 表：heroes_catalog（内容表）
+- 时间：ISO8601 字符串（应用层）或 DB `timestamp`（存储层）
+- JSON：SQLite 用 `TEXT` 存 JSON；Postgres 用 `jsonb`
+- 引擎版本：建议记录 `git:<shortsha>` 或 `semver`
 
-用于定义“英雄模板”（类似图鉴），由策划/内容驱动。
+## users
 
-- `id` (PK) 例：`hero_slime_001`
-- `name`
-- `base_stats_json`（hp/atk/def/eva/preempt/king）
-- `skills_json`（技能数组）
-- `tags_json`（阵营/稀有度/合体组等，后续用）
+用途：账号体系（MVP 用户名密码）。
 
-## 表：user_heroes（玩家拥有的英雄实例）
+字段：
 
-如果你希望英雄有等级/觉醒/宝具等成长，建议“实例表”与“内容表”分离。
+- `id` TEXT PK（例：`u_xxx`）
+- `username` TEXT NOT NULL UNIQUE
+- `password_hash` TEXT NOT NULL
+- `created_at` TEXT NOT NULL
 
-- `id` (PK) 例：`uh_123`
-- `user_id` (FK users.id)
-- `catalog_id` (FK heroes_catalog.id)
-- `level`
-- `awakens`
-- `stats_override_json`（可选：宝具/觉醒/羁绊叠加后的最终数值缓存）
-- `created_at`
+索引：
 
-> MVP 也可以简化为：玩家只保存 `catalog_id` 列表，等级先不做实例化。
+- unique(`username`)
 
-## 表：teams
+## heroes_catalog
 
-- `id` (PK) 例：`t_main`
-- `user_id` (FK)
-- `name`
-- `hero_ids_json`：有序数组，长度 1..25（站位顺序）
-- `updated_at`
+用途：内容表（图鉴/模板），由内容文件导入 DB 或直接读取文件（MVP 两种都行）。
 
-## 表：battle_logs
+字段：
 
-用于回放与审计（强烈建议存“输入快照 + seed + 引擎版本”）。
+- `id` TEXT PK（例：`hero_slime_001`）
+- `name` TEXT NOT NULL
+- `base_stats_json` TEXT NOT NULL
+- `skills_json` TEXT NOT NULL
+- `tags_json` TEXT NOT NULL DEFAULT `[]`
+- `created_at` TEXT NOT NULL
+- `updated_at` TEXT NOT NULL
 
-- `id` (PK) 例：`b_456`
-- `user_id` (FK)（发起者）
-- `kind`：`npc|pvp`
-- `seed` (int)
-- `engine_version`（例如 git commit hash 或 semver）
-- `input_snapshot_json`：
-  - `teamA`（英雄属性/技能/顺序的完整快照）
-  - `teamB`（同上）
-  - `config`（maxTurns 等）
-- `result_summary_json`：winner/turns/最终血量摘要等
-- `log_json`（MVP 可直接存完整 log；后续可压缩/分段）
-- `created_at`
+约束（应用层校验即可）：
 
-## 后续：推图/挂机/挖矿（占位）
+- `base_stats_json` 必须包含 `hp/atk/def/eva/preempt/king`
+- `skills_json[].chance` 必须在 0..1
 
-当扩展到核心玩法循环后，通常会新增：
+## user_heroes
 
-- `adventure_state`：当前关卡、挂机开始时间、离线收益倍率等
-- `inventory`：金币/钻石/材料
-- `mine_state`：矿区地图、深度、镐子耐久、工坊工程队列
-- `pvp_state`：分数/段位、匹配池、对手快照
+用途：玩家拥有的英雄实例。即便 MVP 不做升级，也建议保留该表，后续成长系统更顺滑。
+
+字段：
+
+- `id` TEXT PK（例：`uh_xxx`）
+- `user_id` TEXT NOT NULL FK(users.id)
+- `catalog_id` TEXT NOT NULL FK(heroes_catalog.id)
+- `level` INTEGER NOT NULL DEFAULT 1
+- `awakens` INTEGER NOT NULL DEFAULT 0
+- `stats_override_json` TEXT NULL
+- `created_at` TEXT NOT NULL
+- `updated_at` TEXT NOT NULL
+
+索引：
+
+- index(`user_id`)
+- index(`catalog_id`)
+- unique(`user_id`, `id`)（可选）
+
+说明：
+
+- `stats_override_json` 用于缓存“最终战斗数值”（宝具/觉醒/羁绊叠加后）。MVP 可为空，由服务端实时合成。
+
+## teams
+
+用途：保存 25 人队伍配置（有序）。
+
+字段：
+
+- `id` TEXT PK（例：`t_main` 或 `t_xxx`）
+- `user_id` TEXT NOT NULL FK(users.id)
+- `name` TEXT NOT NULL
+- `hero_ids_json` TEXT NOT NULL（有序数组，长度 1..25，元素为 `user_heroes.id`）
+- `version` INTEGER NOT NULL DEFAULT 1（乐观锁/防并发覆盖）
+- `created_at` TEXT NOT NULL
+- `updated_at` TEXT NOT NULL
+
+索引：
+
+- unique(`user_id`, `id`)
+- index(`user_id`)
+
+约束（应用层）：
+
+- `hero_ids_json` 不可重复
+- 所有 heroId 必须属于 `user_id`
+
+## npc_teams（可选但推荐）
+
+用途：服务端裁决时读取敌方队伍快照；MVP 可以先写死在文件里，这张表是“可落库的方向”。
+
+字段：
+
+- `id` TEXT PK（例：`stage_1_boss`）
+- `name` TEXT NOT NULL
+- `team_snapshot_json` TEXT NOT NULL（即 `TeamSnapshot`）
+- `created_at` TEXT NOT NULL
+- `updated_at` TEXT NOT NULL
+
+## battle_logs
+
+用途：回放与审计。强烈建议存“输入快照 + seed + 引擎版本”。日志可先全量存，后续再优化为分段/压缩。
+
+字段：
+
+- `id` TEXT PK（例：`b_xxx`）
+- `user_id` TEXT NOT NULL FK(users.id)
+- `kind` TEXT NOT NULL（`npc`/`pvp`）
+- `seed` INTEGER NOT NULL
+- `engine_version` TEXT NOT NULL
+- `input_snapshot_json` TEXT NOT NULL
+- `result_summary_json` TEXT NOT NULL
+- `log_json` TEXT NOT NULL
+- `created_at` TEXT NOT NULL
+
+索引：
+
+- index(`user_id`, `created_at`)
+- index(`kind`, `created_at`)
+
+输入快照结构（建议）：
+
+```json
+{
+  "teamA": { "heroes": [ /* HeroSnapshot */ ] },
+  "teamB": { "heroes": [ /* HeroSnapshot */ ] },
+  "config": { "maxTurns": 200 }
+}
+```
+
+结果摘要结构（建议）：
+
+```json
+{ "winner": "A", "turns": 37 }
+```
+
+## 迁移策略（建议）
+
+- MVP 用 SQLite：`data/app.db`
+- 使用迁移工具（例如自写简单迁移表 `schema_migrations`，或 later 上 prisma/kysely）
+- 任何会影响回放一致性的字段变更，都要同步 `engine_version` 记录与回放读取逻辑
 
