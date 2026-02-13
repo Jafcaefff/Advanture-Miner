@@ -69,16 +69,16 @@ P = sum(skill.chance for all skills in table)
 
 ### 3) 技能选择（加权区间 + 顺序优先）
 
-使用一个 `r`（均匀随机）来决定具体技能：
+使用一个 `r`（均匀随机，`r ∈ [0,1)`）来决定具体技能：
 
 - 当 `P < 1` 且 `r >= P`：平A
-- 其余情况：把 `r` 映射到区间并按技能表顺序“吃掉区间”：
+- 其余情况：按技能表顺序“吃掉区间”（区间只在 `[0,1)` 内有效）。当 `P >= 1` 时，**后面超出 1 的概率区间不会被命中**，这就是“站位越靠前优先级越高”的主要来源。
 
 伪代码：
 
 ```ts
 if (P < 1 && r >= P) return normal;
-let x = (P < 1) ? r : (r * P); // P>=1 时缩放，确保不出 normal
+let x = r;
 for (skill of table in order) {
   if (x < skill.chance) return skill;
   x -= skill.chance;
@@ -89,7 +89,7 @@ return lastSkill; // 数值边界
 这个机制同时满足：
 
 - “概率叠加”：全队技能概率直接相加
-- “站位优先级”：技能表顺序决定谁更容易先被抽中（在相同 chance 下，靠前者占据更靠前的概率区间）
+- “站位优先级”：当 `P >= 1` 时，靠前技能优先占满 `[0,1)` 的区间，靠后技能会被“挤出”有效区间
 
 ## 闪避（MVP）
 
@@ -140,4 +140,3 @@ damage = max(1, base - def)
 - 引擎：`packages/engine/src/battle.ts`
 - 类型：`packages/engine/src/types.ts`
 - RNG：`packages/engine/src/rng.ts`
-

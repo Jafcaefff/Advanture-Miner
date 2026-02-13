@@ -88,22 +88,16 @@ function buildSkillTable(team: TeamState): SkillEntry[] {
 // "概率叠加 + 站位优先级"：
 // - 将队伍里所有存活角色技能按队伍顺序扁平化，形成技能表
 // - 概率直接相加；若总和 >= 1，则永远不会平A
-// - 技能选择使用“加权抽取 + 表顺序为优先级”：越靠前的技能越早占据概率区间
+// - 技能选择使用“区间截断到 1 + 表顺序为优先级”：
+//   使用 r∈[0,1)，按表顺序依次消耗 chance 区间；当总和 >= 1 时，后面超出的区间不会被命中
 function pickSkillOrNormal(r01: number, table: SkillEntry[]): { kind: "normal" } | { kind: "skill"; entry: SkillEntry } {
   let total = 0;
   for (const e of table) total += e.skill.chance;
-
   if (total <= 0) return { kind: "normal" };
 
-  if (total < 1) {
-    if (r01 >= total) return { kind: "normal" };
-    // Map into [0, total) to pick a skill by its raw chance segments.
-    r01 = r01;
-  } else {
-    // Ensure "no normal attack" once total >= 1
-    // Scale the roll into [0, total)
-    r01 = r01 * total;
-  }
+  // When total < 1, there is a (1-total) chance to do a normal attack.
+  // When total >= 1, a normal attack never happens.
+  if (total < 1 && r01 >= total) return { kind: "normal" };
 
   let x = r01;
   for (const e of table) {
@@ -111,8 +105,8 @@ function pickSkillOrNormal(r01: number, table: SkillEntry[]): { kind: "normal" }
     x -= e.skill.chance;
   }
 
-  // Numerical edge case.
-  return { kind: "skill", entry: table[table.length - 1]! };
+  // If total < 1 we can land here (no skill), otherwise numerical edge.
+  return total < 1 ? { kind: "normal" } : { kind: "skill", entry: table[table.length - 1]! };
 }
 
 function computeDamage(attacker: HeroState, defender: HeroState, mult: number): number {
@@ -315,4 +309,3 @@ export function makeDemoTeam(side: Side): Team {
 
   return { heroes: Array.from({ length: 25 }, (_, i) => mkHero(i + 1)) };
 }
-
