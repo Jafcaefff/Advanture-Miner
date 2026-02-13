@@ -1,0 +1,15 @@
+{
+  "name": "@am/web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node -e \"console.log('apps/web: not implemented yet')\"",
+    "build": "node -e \"console.log('apps/web: not implemented yet')\"",
+    "typecheck": "node -e \"console.log('apps/web: not implemented yet')\"",
+    "lint": "node -e \"console.log('apps/web: not implemented yet')\""
+  },
+  "dependencies": {
+    "@am/engine": "*"
+  }
+}

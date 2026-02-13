@@ -1,0 +1,19 @@
+{
+  "name": "adventure-mining-webgame",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @am/api\" \"npm run dev -w @am/web\"",
+    "build": "npm run build -ws",
+    "typecheck": "npm run typecheck -ws",
+    "lint": "npm run lint -ws"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.2"
+  }
+}

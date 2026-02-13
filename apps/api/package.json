@@ -1,0 +1,15 @@
+{
+  "name": "@am/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node -e \"console.log('apps/api: not implemented yet')\"",
+    "build": "node -e \"console.log('apps/api: not implemented yet')\"",
+    "typecheck": "node -e \"console.log('apps/api: not implemented yet')\"",
+    "lint": "node -e \"console.log('apps/api: not implemented yet')\""
+  },
+  "dependencies": {
+    "@am/engine": "*"
+  }
+}
