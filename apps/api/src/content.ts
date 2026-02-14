@@ -1,6 +1,7 @@
 import type { Db } from "./db.js";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, dirname, isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
 
 type CatalogHero = {
   id: string;
@@ -49,6 +50,9 @@ const FALLBACK_NPC_TEAMS = [
   }
 ];
 
+const THIS_DIR = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(THIS_DIR, "..", "..", "..");
+
 function loadJsonFile<T>(path: string): T | null {
   try {
     const txt = readFileSync(path, "utf8");
@@ -58,12 +62,19 @@ function loadJsonFile<T>(path: string): T | null {
   }
 }
 
+function resolveContentFile(contentDir: string, filename: string): string {
+  // When running `npm run dev -w @am/api`, cwd is `apps/api`, so resolving relative to cwd breaks.
+  // Treat relative CONTENT_DIR as repo-root relative.
+  const base = isAbsolute(contentDir) ? contentDir : resolve(REPO_ROOT, contentDir);
+  return resolve(base, filename);
+}
+
 export function seedContent(db: Db, contentDir: string) {
   const now = new Date().toISOString();
 
-  const heroesPath = resolve(process.cwd(), contentDir, "heroes.json");
-  const npcTeamsPath = resolve(process.cwd(), contentDir, "npc_teams.json");
-  const stagesPath = resolve(process.cwd(), contentDir, "stages.json");
+  const heroesPath = resolveContentFile(contentDir, "heroes.json");
+  const npcTeamsPath = resolveContentFile(contentDir, "npc_teams.json");
+  const stagesPath = resolveContentFile(contentDir, "stages.json");
 
   const catalog = loadJsonFile<CatalogHero[]>(heroesPath) ?? FALLBACK_CATALOG;
   const npcTeams = loadJsonFile<any[]>(npcTeamsPath) ?? FALLBACK_NPC_TEAMS;
