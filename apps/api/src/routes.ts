@@ -42,6 +42,11 @@ const SimulateSchema = z.object({
     .optional()
 });
 
+const BattleEventsQuery = z.object({
+  after: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(200).default(40)
+});
+
 const StartAdventureSchema = z.object({
   stageId: z.string().min(1).optional()
 });
@@ -161,6 +166,25 @@ function claimAdventure(db: Db, userId: string): { gainedGold: number; gainedExp
 
   const totals = db.prepare("SELECT gold, exp FROM users WHERE id = ?").get(userId) as any;
   return { gainedGold, gainedExp, stage, totals: { gold: Number(totals.gold), exp: Number(totals.exp) } };
+}
+
+function sceneFromSnapshots(input: any) {
+  const teamA = input?.teamA;
+  const teamB = input?.teamB;
+  return {
+    rosterA: (teamA?.heroes ?? []).map((h: any) => ({ id: String(h.id), name: String(h.name), maxHp: Number(h.stats?.hp ?? 1) })),
+    rosterB: (teamB?.heroes ?? []).map((h: any) => ({ id: String(h.id), name: String(h.name), maxHp: Number(h.stats?.hp ?? 1) }))
+  };
+}
+
+function loadBattleRow(db: Db, userId: string, battleId: string) {
+  const row = db
+    .prepare(
+      "SELECT id, created_at AS createdAt, seed, engine_version AS engineVersion, input_snapshot_json AS inputJson, result_summary_json AS resultJson, log_json AS logJson FROM battle_logs WHERE id = ? AND user_id = ?"
+    )
+    .get(battleId, userId) as any;
+  if (!row) throw new ApiError(404, "BATTLE_NOT_FOUND", "Battle not found");
+  return row;
 }
 
 export function installRoutes(app: FastifyInstance, db: Db) {
@@ -382,15 +406,18 @@ export function installRoutes(app: FastifyInstance, db: Db) {
       db.prepare("UPDATE adventure_state SET stage_id = ?, started_at = ?, last_claimed_at = ? WHERE user_id = ?").run(newStageId, now, now, userId);
     }
 
+    const events0 = result.log.slice(0, 40);
+    const nextAfter = events0.length;
     reply.code(201).send({
       claimed,
       battle: {
         battleId,
         seed,
         engineVersion,
-        winner: result.winner,
-        turns: result.turns,
-        log: result.log,
+        // stream playback: do not reveal winner/turns upfront
+        events: events0,
+        nextAfter,
+        done: nextAfter >= result.log.length,
         scene
       },
       progressed,
@@ -542,15 +569,46 @@ export function installRoutes(app: FastifyInstance, db: Db) {
       createdAt
     );
 
+    const events0 = result.log.slice(0, 40);
+    const nextAfter = events0.length;
     reply.code(201).send({
       battleId,
       seed,
       engineVersion,
-      winner: result.winner,
-      turns: result.turns,
-      log: result.log,
+      events: events0,
+      nextAfter,
+      done: nextAfter >= result.log.length,
       scene
     });
+  });
+
+  // Streamed battle events. Use cursor-based pagination for "realtime-like" playback.
+  app.get("/api/v1/battles/:battleId/events", async (req) => {
+    requireAuth(req);
+    const userId = req.user.userId;
+    const battleId = z.object({ battleId: z.string().min(1) }).parse((req as any).params).battleId;
+    const q = BattleEventsQuery.parse((req as any).query ?? {});
+
+    const row = loadBattleRow(db, userId, battleId);
+    const log = JSON.parse(String(row.logJson)) as any[];
+    const after = Math.min(q.after, log.length);
+    const events = log.slice(after, Math.min(log.length, after + q.limit));
+    const nextAfter = after + events.length;
+    const done = nextAfter >= log.length;
+
+    const input = JSON.parse(String(row.inputJson));
+    const scene = after === 0 ? sceneFromSnapshots(input) : undefined;
+    const summary = done ? JSON.parse(String(row.resultJson)) : undefined;
+
+    return {
+      battleId: String(row.id),
+      after,
+      events,
+      nextAfter,
+      done,
+      ...(scene ? { scene } : {}),
+      ...(summary ? { summary } : {})
+    };
   });
 
   app.get("/api/v1/battles/:battleId", async (req) => {
@@ -558,12 +616,7 @@ export function installRoutes(app: FastifyInstance, db: Db) {
     const userId = req.user.userId;
     const battleId = z.object({ battleId: z.string().min(1) }).parse((req as any).params).battleId;
 
-    const row = db
-      .prepare(
-        "SELECT id, created_at AS createdAt, seed, engine_version AS engineVersion, input_snapshot_json AS inputJson, result_summary_json AS resultJson, log_json AS logJson FROM battle_logs WHERE id = ? AND user_id = ?"
-      )
-      .get(battleId, userId) as any;
-    if (!row) throw new ApiError(404, "BATTLE_NOT_FOUND", "Battle not found");
+    const row = loadBattleRow(db, userId, battleId);
 
     return {
       battleId: String(row.id),

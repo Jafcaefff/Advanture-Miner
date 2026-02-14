@@ -17,9 +17,9 @@ type SimResult = {
   battleId: string;
   seed: number;
   engineVersion: string;
-  winner: "A" | "B" | "Draw";
-  turns: number;
   log: any[];
+  winner?: "A" | "B" | "Draw";
+  turns?: number;
   scene?: { rosterA: Array<{ id: string; name: string; maxHp: number }>; rosterB: Array<{ id: string; name: string; maxHp: number }> };
 };
 
@@ -230,6 +230,44 @@ export function App() {
     el.scrollTop = el.scrollHeight;
   }, [battle?.battleId, visibleLog, playing]);
 
+  async function fetchMoreEvents(battleId: string, after: number) {
+    // Use streamed events so UI doesn't know the winner up-front.
+    return apiFetch<any>(`/api/v1/battles/${encodeURIComponent(battleId)}/events?after=${after}&limit=80`, {
+      token: token || undefined
+    });
+  }
+
+  useEffect(() => {
+    if (!battle || !playing) return;
+    // When we are close to the end of buffered events, fetch more.
+    const buffered = battle.log.length;
+    if (visibleLog + 12 < buffered) return;
+    const hasEnd = battle.log.some((e) => e?.t === "battle_end");
+    if (hasEnd) return;
+
+    let cancelled = false;
+    fetchMoreEvents(battle.battleId, buffered)
+      .then((page) => {
+        if (cancelled) return;
+        const events = Array.isArray(page?.events) ? page.events : [];
+        setBattle((b) => {
+          if (!b || b.battleId !== battle.battleId) return b;
+          const nextLog = b.log.concat(events);
+          const endEvt = events.find((e: any) => e?.t === "battle_end");
+          const winner = endEvt?.winner ?? page?.summary?.winner ?? b.winner;
+          const turns = endEvt?.turns ?? page?.summary?.turns ?? b.turns;
+          const scene = page?.scene ?? b.scene;
+          return { ...b, log: nextLog, winner, turns, scene };
+        });
+      })
+      .catch(() => {})
+      .finally(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [battle?.battleId, battle?.log.length, playing, visibleLog, token]);
+
   async function doAuth() {
     setBusy(true);
     setErr(null);
@@ -271,12 +309,18 @@ export function App() {
     setErr(null);
     setBattle(null);
     try {
-      const r = await apiFetch<SimResult>("/api/v1/battles/simulate", {
+      const r = await apiFetch<any>("/api/v1/battles/simulate", {
         method: "POST",
         token,
         body: { teamId, enemy: { kind: "npc", npcId: "stage_1_boss" }, options: { maxTurns: 200 } }
       });
-      setBattle(r);
+      setBattle({
+        battleId: String(r.battleId),
+        seed: Number(r.seed),
+        engineVersion: String(r.engineVersion),
+        log: Array.isArray(r.events) ? r.events : [],
+        scene: r.scene
+      });
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -304,7 +348,14 @@ export function App() {
     setErr(null);
     try {
       const r = await apiFetch<any>("/api/v1/adventure/fightBoss", { method: "POST", token, body: { teamId: "t_main" } });
-      setBattle(r.battle as SimResult);
+      const b = r.battle ?? {};
+      setBattle({
+        battleId: String(b.battleId),
+        seed: Number(b.seed),
+        engineVersion: String(b.engineVersion),
+        log: Array.isArray(b.events) ? b.events : [],
+        scene: b.scene
+      });
       await refreshAll(token);
       setTab("team");
     } catch (e: any) {
@@ -558,10 +609,14 @@ export function App() {
                 {battle ? (
                   <>
                     <span className="mono">回放={battle.battleId}</span>
-                    <span className={battle.winner === "A" ? "ok" : battle.winner === "B" ? "bad" : ""}>
-                      胜者={battle.winner === "A" ? "我方" : battle.winner === "B" ? "敌方" : "平局"}
-                    </span>
-                    <span className="mono">回合={battle.turns}</span>
+                    {battle.winner ? (
+                      <span className={battle.winner === "A" ? "ok" : battle.winner === "B" ? "bad" : ""}>
+                        胜者={battle.winner === "A" ? "我方" : battle.winner === "B" ? "敌方" : "平局"}
+                      </span>
+                    ) : (
+                      <span className="mono">胜者=？</span>
+                    )}
+                    <span className="mono">回合={battle.turns ?? "…"}</span>
                   </>
                 ) : (
                   <span className="mono">还没战斗</span>
