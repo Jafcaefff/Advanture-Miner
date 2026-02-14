@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../api";
+import { PixelGolem, PixelHero } from "./pixel";
 
 type Me = {
   userId: string;
@@ -19,6 +20,7 @@ type SimResult = {
   winner: "A" | "B" | "Draw";
   turns: number;
   log: any[];
+  scene?: { player: { name: string; maxHp: number }; enemy: { name: string; maxHp: number } };
 };
 
 type AdventureState = {
@@ -50,8 +52,26 @@ function fmtLogLine(e: any): string {
   if (e.t === "heal") return `T${e.turn} ${e.side}: ${e.actorName} heal[${e.skillName}] -> ${e.targetName} +${e.amount} (hp=${e.targetHpAfter})`;
   if (e.t === "buff") return `T${e.turn} ${e.side}: ${e.actorName} buff[${e.skillName}] ${e.stat} ${e.amount} (${e.durationTurns}t)`;
   if (e.t === "hero_down") return `T${e.turn} ${e.side}: ${e.heroName} down`;
-  if (e.t === "battle_end") return `END: winner=${e.winner} turns=${e.turns}`;
+  if (e.t === "battle_end") return `结束: 胜者=${e.winner} 回合=${e.turns}`;
   return JSON.stringify(e);
+}
+
+function computeHp(battle: SimResult | null, visibleLog: number) {
+  const scene = battle?.scene;
+  const playerMax = Math.max(1, Math.floor(Number(scene?.player.maxHp ?? 1)));
+  const enemyMax = Math.max(1, Math.floor(Number(scene?.enemy.maxHp ?? 1)));
+  let playerHp = playerMax;
+  let enemyHp = enemyMax;
+  const slice = (battle?.log ?? []).slice(0, visibleLog);
+  for (const e of slice) {
+    if (e?.t === "action") {
+      if (e?.targetName === scene?.player.name) playerHp = Math.max(0, Number(e.targetHpAfter ?? playerHp));
+      if (e?.targetName === scene?.enemy.name) enemyHp = Math.max(0, Number(e.targetHpAfter ?? enemyHp));
+    } else if (e?.t === "heal") {
+      if (e?.targetName === scene?.player.name) playerHp = Math.max(0, Number(e.targetHpAfter ?? playerHp));
+    }
+  }
+  return { playerHp, playerMax, enemyHp, enemyMax };
 }
 
 export function App() {
@@ -78,6 +98,7 @@ export function App() {
   const [visibleLog, setVisibleLog] = useState(0);
   const [playSpeed, setPlaySpeed] = useState<"slow" | "normal" | "fast">("normal");
   const [playing, setPlaying] = useState(false);
+  const [anim, setAnim] = useState<{ a: boolean; b: boolean; ta: boolean; tb: boolean } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const heroOptions = useMemo(() => {
@@ -130,6 +151,21 @@ export function App() {
     setVisibleLog(0);
     setPlaying(true);
   }, [battle?.battleId]);
+
+  useEffect(() => {
+    if (!battle) return;
+    const e = battle.log[Math.max(0, visibleLog - 1)];
+    if (!e) return;
+    if (e.t !== "action" && e.t !== "heal") return;
+    // For MVP: assume A attacks B, B attacks A in our front-target rules.
+    const aAct = e.side === "A";
+    const bAct = e.side === "B";
+    const ta = e.side === "B"; // A is target when B acts
+    const tb = e.side === "A"; // B is target when A acts
+    setAnim({ a: aAct, b: bAct, ta, tb });
+    const t = window.setTimeout(() => setAnim(null), 220);
+    return () => window.clearTimeout(t);
+  }, [battle?.battleId, visibleLog]);
 
   useEffect(() => {
     if (!battle || !playing) return;
@@ -259,16 +295,16 @@ export function App() {
         <div className="hud">
           <div className="top">
           <div className="brand">
-            <h1>Adventure Miner</h1>
-            <div className="sub">/api/v1 · server-authoritative · deterministic battle</div>
+            <h1>冒险与挖矿</h1>
+            <div className="sub">/api/v1 · 服务端裁决 · 确定性战斗</div>
           </div>
-          <span className="pill">MVP UI</span>
+          <span className="pill">原型</span>
           </div>
         </div>
 
         <div className="panel" style={{ maxWidth: 520 }}>
           <div className="hd">
-            <h2>Auth</h2>
+            <h2>账号</h2>
             <div className="pill">
               <button
                 onClick={() => setAuthMode("register")}
@@ -313,14 +349,14 @@ export function App() {
       <div className="hud">
         <div className="top">
           <div className="brand">
-            <h1>Adventure Miner</h1>
+            <h1>冒险与挖矿</h1>
             <div className="sub">
               user={me?.userId ?? "…"} · rosterV={me?.rosterVersion ?? "…"} · team={teamId} · heroes={heroes.length}
             </div>
           </div>
           <div className="stack">
-            <span className="pill mono">gold={adv?.balances.gold ?? me?.gold ?? 0}</span>
-            <span className="pill mono">exp={adv?.balances.exp ?? me?.exp ?? 0}</span>
+            <span className="pill mono">金币={adv?.balances.gold ?? me?.gold ?? 0}</span>
+            <span className="pill mono">经验={adv?.balances.exp ?? me?.exp ?? 0}</span>
             <div className="pill">
               <span className="mono">token</span>
               <button className="danger" onClick={() => setToken("")} disabled={busy}>
@@ -335,15 +371,15 @@ export function App() {
         <div className="grid">
           <div className="panel panelTall">
             <div className="hd">
-              <h2>Adventure</h2>
-              <div className="pill mono">{adv ? adv.stage.id : "..."}</div>
+              <h2>冒险</h2>
+              <div className="pill mono">{adv ? adv.stage.id : "…"}</div>
             </div>
             <div className="bd">
               <div className="row">
                 <div className="pill mono">关卡: {adv ? `${adv.stage.name} (${adv.stage.id})` : "..."}</div>
-                <div className="pill mono">收益: +{adv?.stage.goldPerSec ?? 0}g/s · +{adv?.stage.expPerSec ?? 0}exp/s</div>
+                <div className="pill mono">收益: +{adv?.stage.goldPerSec ?? 0} 金币/秒 · +{adv?.stage.expPerSec ?? 0} 经验/秒</div>
                 <div className="pill mono">
-                  可领取: +{adv?.claimPreview.gold ?? 0}g · +{adv?.claimPreview.exp ?? 0}exp (sec={adv?.claimPreview.seconds ?? 0})
+                  可领取: +{adv?.claimPreview.gold ?? 0} 金币 · +{adv?.claimPreview.exp ?? 0} 经验 (秒={adv?.claimPreview.seconds ?? 0})
                 </div>
                 <div className="stack">
                   <button className="primary" onClick={advClaim} disabled={busy}>
@@ -360,8 +396,8 @@ export function App() {
 
           <div className="panel panelTall">
             <div className="hd">
-              <h2>Tips</h2>
-              <div className="pill mono">MVP</div>
+              <h2>提示</h2>
+              <div className="pill mono">原型</div>
             </div>
             <div className="bd">
               <div className="row">
@@ -376,8 +412,8 @@ export function App() {
         <div className="grid">
           <div className="panel panelTall">
             <div className="hd">
-              <h2>Team (25 slots)</h2>
-              <div className="pill">version={teamVersion ?? "?"}</div>
+              <h2>队伍（25人）</h2>
+              <div className="pill mono">版本={teamVersion ?? "?"}</div>
             </div>
             <div className="bd">
               <div className="teamFixed">
@@ -466,21 +502,68 @@ export function App() {
 
           <div className="panel panelTall">
             <div className="hd">
-              <h2>Battle Log</h2>
+              <h2>战斗</h2>
               <div className="pill">
                 {battle ? (
                   <>
-                    <span className="mono">battleId={battle.battleId}</span>
-                    <span className={battle.winner === "A" ? "ok" : battle.winner === "B" ? "bad" : ""}>winner={battle.winner}</span>
-                    <span className="mono">turns={battle.turns}</span>
+                    <span className="mono">回放={battle.battleId}</span>
+                    <span className={battle.winner === "A" ? "ok" : battle.winner === "B" ? "bad" : ""}>
+                      胜者={battle.winner === "A" ? "我方" : battle.winner === "B" ? "敌方" : "平局"}
+                    </span>
+                    <span className="mono">回合={battle.turns}</span>
                   </>
                 ) : (
-                  <span className="mono">no battle yet</span>
+                  <span className="mono">还没战斗</span>
                 )}
               </div>
             </div>
             <div className="bd">
               <div className="battleBody">
+                <div className="arena" style={{ marginBottom: 10 }}>
+                  {battle?.scene ? (
+                    (() => {
+                      const hp = computeHp(battle, visibleLog);
+                      const pPct = Math.max(0, Math.min(1, hp.playerHp / hp.playerMax));
+                      const ePct = Math.max(0, Math.min(1, hp.enemyHp / hp.enemyMax));
+                      return (
+                        <div className="arenaRow">
+                          <div className={`fighter ${anim?.a ? "animAttackL" : ""} ${anim?.ta ? "animHit" : ""}`}>
+                            <div className="spriteBox">
+                              <PixelHero tint="#ffd27a" />
+                            </div>
+                            <div className="fighterMeta">
+                              <div className="fighterName">{battle.scene.player.name}</div>
+                              <div className="hpBar">
+                                <div className="hpFill" style={{ width: `${pPct * 100}%` }} />
+                              </div>
+                              <div className="hpText">
+                                HP {hp.playerHp}/{hp.playerMax}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className={`fighter right ${anim?.b ? "animAttackR" : ""} ${anim?.tb ? "animHit" : ""}`}>
+                            <div className="fighterMeta" style={{ textAlign: "right" }}>
+                              <div className="fighterName">{battle.scene.enemy.name}</div>
+                              <div className="hpBar">
+                                <div className="hpFill" style={{ width: `${ePct * 100}%` }} />
+                              </div>
+                              <div className="hpText">
+                                HP {hp.enemyHp}/{hp.enemyMax}
+                              </div>
+                            </div>
+                            <div className="spriteBox">
+                              <PixelGolem tint="#b9b3aa" />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                  <div className="pill mono">等待战斗数据…</div>
+                  )}
+                </div>
+
                 <div className="stack" style={{ marginBottom: 10 }}>
                   <button onClick={() => setPlaying((p) => !p)} disabled={!battle}>
                     {playing ? "暂停" : "播放"}
@@ -493,9 +576,7 @@ export function App() {
                     <option value="normal">中</option>
                     <option value="fast">快</option>
                   </select>
-                  <span className="pill mono">
-                    {battle ? `${visibleLog}/${battle.log.length}` : "0/0"}
-                  </span>
+                  <span className="pill mono">{battle ? `日志 ${visibleLog}/${battle.log.length}` : "日志 0/0"}</span>
                 </div>
 
                 <div className="log">
@@ -510,8 +591,8 @@ export function App() {
                 </div>
                 {battle ? (
                   <div style={{ marginTop: 10 }} className="stack">
-                    <span className="pill mono">seed={battle.seed}</span>
-                    <span className="pill mono">engine={battle.engineVersion}</span>
+                    <span className="pill mono">种子={battle.seed}</span>
+                    <span className="pill mono">引擎={battle.engineVersion}</span>
                   </div>
                 ) : null}
               </div>

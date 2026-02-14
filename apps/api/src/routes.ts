@@ -354,6 +354,10 @@ export function installRoutes(app: FastifyInstance, db: Db) {
 
     const inputSnapshot = { teamA, teamB, config };
     const resultSummary = { winner: result.winner, turns: result.turns };
+    const scene = {
+      player: { name: teamA.heroes[0]?.name ?? "玩家", maxHp: Number(teamA.heroes[0]?.stats?.hp ?? 1) },
+      enemy: { name: teamB.heroes?.[0]?.name ?? "敌人", maxHp: Number(teamB.heroes?.[0]?.stats?.hp ?? 1) }
+    };
 
     db.prepare(
       "INSERT INTO battle_logs (id, user_id, kind, seed, engine_version, input_snapshot_json, result_summary_json, log_json, created_at) VALUES (?, ?, 'npc', ?, ?, ?, ?, ?, ?)"
@@ -386,7 +390,8 @@ export function installRoutes(app: FastifyInstance, db: Db) {
         engineVersion,
         winner: result.winner,
         turns: result.turns,
-        log: result.log
+        log: result.log,
+        scene
       },
       progressed,
       newStageId
@@ -519,6 +524,10 @@ export function installRoutes(app: FastifyInstance, db: Db) {
 
     const inputSnapshot = { teamA, teamB, config };
     const resultSummary = { winner: result.winner, turns: result.turns };
+    const scene = {
+      player: { name: teamA.heroes[0]?.name ?? "玩家", maxHp: Number(teamA.heroes[0]?.stats?.hp ?? 1) },
+      enemy: { name: teamB.heroes?.[0]?.name ?? "敌人", maxHp: Number(teamB.heroes?.[0]?.stats?.hp ?? 1) }
+    };
 
     db.prepare(
       "INSERT INTO battle_logs (id, user_id, kind, seed, engine_version, input_snapshot_json, result_summary_json, log_json, created_at) VALUES (?, ?, 'npc', ?, ?, ?, ?, ?, ?)"
@@ -539,7 +548,8 @@ export function installRoutes(app: FastifyInstance, db: Db) {
       engineVersion,
       winner: result.winner,
       turns: result.turns,
-      log: result.log
+      log: result.log,
+      scene
     });
   });
 
