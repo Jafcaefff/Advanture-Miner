@@ -257,6 +257,8 @@ a {
 .panel .bd {
   position: relative;
   padding: 14px;
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -269,8 +271,12 @@ a {
 .teamScroll {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding-bottom: 18px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 22px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .battleBody {
