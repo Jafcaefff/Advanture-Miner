@@ -4,3 +4,8 @@ dist
 .env.*
 data
 .DS_Store
+
+# Generated sprite crops (not used; keep source sheets)
+apps/web/public/assets/oga/hero*.png
+apps/web/public/assets/oga/boss*.png
+apps/web/public/assets/oga/m_*.png

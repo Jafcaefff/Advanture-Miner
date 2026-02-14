@@ -20,7 +20,7 @@ type SimResult = {
   winner: "A" | "B" | "Draw";
   turns: number;
   log: any[];
-  scene?: { player: { name: string; maxHp: number }; enemy: { name: string; maxHp: number } };
+  scene?: { rosterA: Array<{ name: string; maxHp: number }>; rosterB: Array<{ name: string; maxHp: number }> };
 };
 
 type AdventureState = {
@@ -53,26 +53,71 @@ function fmtLogLine(e: any): string {
   if (e.t === "heal") return `回合${e.turn} ${side}: ${e.actorName} 治疗[${e.skillName}] -> ${e.targetName} +${e.amount} (hp=${e.targetHpAfter})`;
   if (e.t === "buff") return `回合${e.turn} ${side}: ${e.actorName} 增益[${e.skillName}] ${e.stat} ${e.amount} (${e.durationTurns}回合)`;
   if (e.t === "hero_down") return `回合${e.turn} ${side}: ${e.heroName} 倒下`;
-  if (e.t === "battle_end") return `结束: 胜者=${e.winner} 回合=${e.turns}`;
+  if (e.t === "battle_end") {
+    const w = e.winner === "A" ? "我方" : e.winner === "B" ? "敌方" : "平局";
+    return `结束: 胜者=${w} 回合=${e.turns}`;
+  }
   return JSON.stringify(e);
 }
 
-function computeHp(battle: SimResult | null, visibleLog: number) {
+function computeFrontline(battle: SimResult | null, visibleLog: number) {
   const scene = battle?.scene;
-  const playerMax = Math.max(1, Math.floor(Number(scene?.player.maxHp ?? 1)));
-  const enemyMax = Math.max(1, Math.floor(Number(scene?.enemy.maxHp ?? 1)));
-  let playerHp = playerMax;
-  let enemyHp = enemyMax;
+  const rosterA = scene?.rosterA ?? [];
+  const rosterB = scene?.rosterB ?? [];
+
+  let aIdx = 0;
+  let bIdx = 0;
+  let aHp = Math.max(1, Math.floor(Number(rosterA[0]?.maxHp ?? 1)));
+  let bHp = Math.max(1, Math.floor(Number(rosterB[0]?.maxHp ?? 1)));
+
   const slice = (battle?.log ?? []).slice(0, visibleLog);
   for (const e of slice) {
+    if (e?.t === "hero_down") {
+      if (e.side === "A") {
+        if (rosterA[aIdx]?.name === e.heroName) {
+          aIdx = Math.min(rosterA.length - 1, aIdx + 1);
+          aHp = Math.max(1, Math.floor(Number(rosterA[aIdx]?.maxHp ?? 1)));
+        }
+      } else if (e.side === "B") {
+        if (rosterB[bIdx]?.name === e.heroName) {
+          bIdx = Math.min(rosterB.length - 1, bIdx + 1);
+          bHp = Math.max(1, Math.floor(Number(rosterB[bIdx]?.maxHp ?? 1)));
+        }
+      }
+      continue;
+    }
+
     if (e?.t === "action") {
-      if (e?.targetName === scene?.player.name) playerHp = Math.max(0, Number(e.targetHpAfter ?? playerHp));
-      if (e?.targetName === scene?.enemy.name) enemyHp = Math.max(0, Number(e.targetHpAfter ?? enemyHp));
-    } else if (e?.t === "heal") {
-      if (e?.targetName === scene?.player.name) playerHp = Math.max(0, Number(e.targetHpAfter ?? playerHp));
+      // Targets are always "front alive" in our MVP rules, so keep frontline consistent with log.
+      if (e.side === "A") {
+        // A hits B
+        const tgt = String(e.targetName ?? "");
+        const j = rosterB.findIndex((x) => x.name === tgt);
+        if (j >= 0) bIdx = j;
+        bHp = Math.max(0, Number(e.targetHpAfter ?? bHp));
+      } else if (e.side === "B") {
+        const tgt = String(e.targetName ?? "");
+        const j = rosterA.findIndex((x) => x.name === tgt);
+        if (j >= 0) aIdx = j;
+        aHp = Math.max(0, Number(e.targetHpAfter ?? aHp));
+      }
+      continue;
+    }
+
+    if (e?.t === "heal") {
+      // MVP: heals front ally; still update by name.
+      const tgt = String(e.targetName ?? "");
+      const j = rosterA.findIndex((x) => x.name === tgt);
+      if (j >= 0) aIdx = j;
+      aHp = Math.max(0, Number(e.targetHpAfter ?? aHp));
     }
   }
-  return { playerHp, playerMax, enemyHp, enemyMax };
+
+  const aName = rosterA[aIdx]?.name ?? "我方";
+  const bName = rosterB[bIdx]?.name ?? "敌方";
+  const aMax = Math.max(1, Math.floor(Number(rosterA[aIdx]?.maxHp ?? 1)));
+  const bMax = Math.max(1, Math.floor(Number(rosterB[bIdx]?.maxHp ?? 1)));
+  return { aName, bName, aHp, bHp, aMax, bMax };
 }
 
 export function App() {
@@ -522,9 +567,9 @@ export function App() {
                 <div className="arena" style={{ marginBottom: 10 }}>
                   {battle?.scene ? (
                     (() => {
-                      const hp = computeHp(battle, visibleLog);
-                      const pPct = Math.max(0, Math.min(1, hp.playerHp / hp.playerMax));
-                      const ePct = Math.max(0, Math.min(1, hp.enemyHp / hp.enemyMax));
+                      const f = computeFrontline(battle, visibleLog);
+                      const pPct = Math.max(0, Math.min(1, f.aHp / f.aMax));
+                      const ePct = Math.max(0, Math.min(1, f.bHp / f.bMax));
                       return (
                         <div className="arenaRow">
                           <div className={`fighter ${anim?.a ? "animAttackL" : ""} ${anim?.ta ? "animHit" : ""}`}>
@@ -532,21 +577,21 @@ export function App() {
                               <PixelHero tint="#ffd27a" />
                             </div>
                             <div className="fighterMeta">
-                              <div className="fighterName">{battle.scene.player.name}</div>
+                              <div className="fighterName">{f.aName}</div>
                               <div className="hpBar">
                                 <div className="hpFill" style={{ width: `${pPct * 100}%` }} />
                               </div>
-                              <div className="hpText">生命 {hp.playerHp}/{hp.playerMax}</div>
+                              <div className="hpText">生命 {f.aHp}/{f.aMax}</div>
                             </div>
                           </div>
 
                           <div className={`fighter right ${anim?.b ? "animAttackR" : ""} ${anim?.tb ? "animHit" : ""}`}>
                             <div className="fighterMeta" style={{ textAlign: "right" }}>
-                              <div className="fighterName">{battle.scene.enemy.name}</div>
+                              <div className="fighterName">{f.bName}</div>
                               <div className="hpBar">
                                 <div className="hpFill" style={{ width: `${ePct * 100}%` }} />
                               </div>
-                              <div className="hpText">生命 {hp.enemyHp}/{hp.enemyMax}</div>
+                              <div className="hpText">生命 {f.bHp}/{f.bMax}</div>
                             </div>
                             <div className="spriteBox">
                               <PixelGolem tint="#b9b3aa" />
