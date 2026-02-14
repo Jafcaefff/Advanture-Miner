@@ -351,7 +351,7 @@ export function App() {
           <div className="brand">
             <h1>冒险与挖矿</h1>
             <div className="sub">
-              user={me?.userId ?? "…"} · rosterV={me?.rosterVersion ?? "…"} · team={teamId} · heroes={heroes.length}
+              用户={me?.userId ?? "…"} · 档案版本={me?.rosterVersion ?? "…"} · 队伍={teamId} · 英雄={heroes.length}
             </div>
           </div>
           <div className="stack">
@@ -464,8 +464,7 @@ export function App() {
 
                   <div className="editor">
                     <div className="pill mono">
-                      slot={String(selectedSlot + 1).padStart(2, "0")} ·{" "}
-                      {heroIds[selectedSlot] ? getHeroLabelById(heroIds[selectedSlot]!) : "-"}
+                      格子={String(selectedSlot + 1).padStart(2, "0")} · {heroIds[selectedSlot] ? getHeroLabelById(heroIds[selectedSlot]!) : "-"}
                     </div>
                     <div className="row">
                       <div className="field">
@@ -536,9 +535,7 @@ export function App() {
                               <div className="hpBar">
                                 <div className="hpFill" style={{ width: `${pPct * 100}%` }} />
                               </div>
-                              <div className="hpText">
-                                HP {hp.playerHp}/{hp.playerMax}
-                              </div>
+                              <div className="hpText">生命 {hp.playerHp}/{hp.playerMax}</div>
                             </div>
                           </div>
 
@@ -548,9 +545,7 @@ export function App() {
                               <div className="hpBar">
                                 <div className="hpFill" style={{ width: `${ePct * 100}%` }} />
                               </div>
-                              <div className="hpText">
-                                HP {hp.enemyHp}/{hp.enemyMax}
-                              </div>
+                              <div className="hpText">生命 {hp.enemyHp}/{hp.enemyMax}</div>
                             </div>
                             <div className="spriteBox">
                               <PixelGolem tint="#b9b3aa" />
