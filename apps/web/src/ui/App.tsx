@@ -8,6 +8,7 @@ type Me = {
 };
 
 type HeroItem = { id: string; catalogId: string; level: number };
+type CatalogHero = { id: string; name: string };
 
 type SimResult = {
   battleId: string;
@@ -52,6 +53,7 @@ export function App() {
 
   const [me, setMe] = useState<Me | null>(null);
   const [heroes, setHeroes] = useState<HeroItem[]>([]);
+  const [catalog, setCatalog] = useState<Record<string, string>>({});
 
   const [teamId, setTeamId] = useState("t_main");
   const [teamVersion, setTeamVersion] = useState<number | null>(null);
@@ -63,10 +65,17 @@ export function App() {
   const [err, setErr] = useState<string | null>(null);
 
   const heroOptions = useMemo(() => {
-    return heroes.map((h) => ({ id: h.id, label: `${h.id}  (${h.catalogId}, Lv${h.level})` }));
-  }, [heroes]);
+    return heroes.map((h) => {
+      const nm = catalog[h.catalogId] ?? h.catalogId;
+      const shortId = h.id.length > 10 ? `${h.id.slice(0, 6)}…${h.id.slice(-4)}` : h.id;
+      return { id: h.id, label: `${nm}  Lv${h.level}  (${shortId})` };
+    });
+  }, [heroes, catalog]);
 
   async function refreshAll(tk: string) {
+    const cat = await apiFetch<{ items: CatalogHero[] }>("/api/v1/catalog/heroes");
+    setCatalog(Object.fromEntries(cat.items.map((x) => [x.id, x.name])));
+
     const me = await apiFetch<Me>("/api/v1/me", { token: tk });
     setMe(me);
     const items: HeroItem[] = [];
@@ -165,15 +174,17 @@ export function App() {
   if (!token) {
     return (
       <div className="wrap">
-        <div className="top">
+        <div className="hud">
+          <div className="top">
           <div className="brand">
             <h1>Adventure Miner</h1>
             <div className="sub">/api/v1 · server-authoritative · deterministic battle</div>
           </div>
           <span className="pill">MVP UI</span>
+          </div>
         </div>
 
-        <div className="card" style={{ maxWidth: 520 }}>
+        <div className="panel" style={{ maxWidth: 520 }}>
           <div className="hd">
             <h2>Auth</h2>
             <div className="pill">
@@ -217,23 +228,25 @@ export function App() {
 
   return (
     <div className="wrap">
-      <div className="top">
-        <div className="brand">
-          <h1>Adventure Miner</h1>
-          <div className="sub">
-            user={me?.userId ?? "…"} · rosterV={me?.rosterVersion ?? "…"} · team={teamId} · heroes={heroes.length}
+      <div className="hud">
+        <div className="top">
+          <div className="brand">
+            <h1>Adventure Miner</h1>
+            <div className="sub">
+              user={me?.userId ?? "…"} · rosterV={me?.rosterVersion ?? "…"} · team={teamId} · heroes={heroes.length}
+            </div>
           </div>
-        </div>
-        <div className="pill">
-          <span className="mono">token</span>
-          <button className="danger" onClick={() => setToken("")} disabled={busy}>
-            退出
-          </button>
+          <div className="pill">
+            <span className="mono">token</span>
+            <button className="danger" onClick={() => setToken("")} disabled={busy}>
+              退出
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="grid">
-        <div className="card">
+        <div className="panel">
           <div className="hd">
             <h2>Team (25 slots)</h2>
             <div className="pill">version={teamVersion ?? "?"}</div>
@@ -289,7 +302,7 @@ export function App() {
           </div>
         </div>
 
-        <div className="card">
+        <div className="panel">
           <div className="hd">
             <h2>Battle Log</h2>
             <div className="pill">
@@ -318,6 +331,39 @@ export function App() {
                 <span className="pill mono">engine={battle.engineVersion}</span>
               </div>
             ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="bottomNav">
+        <div className="bar">
+          <div className="tabBtn active" role="button" tabIndex={0}>
+            <div className="ic">T</div>
+            <div>
+              <span className="name">队伍</span>
+              <span className="hint">25人站位</span>
+            </div>
+          </div>
+          <div className="tabBtn" role="button" tabIndex={0} aria-disabled="true" style={{ opacity: 0.55 }}>
+            <div className="ic">A</div>
+            <div>
+              <span className="name">冒险</span>
+              <span className="hint">待接入</span>
+            </div>
+          </div>
+          <div className="tabBtn" role="button" tabIndex={0} aria-disabled="true" style={{ opacity: 0.55 }}>
+            <div className="ic">M</div>
+            <div>
+              <span className="name">挖矿</span>
+              <span className="hint">待接入</span>
+            </div>
+          </div>
+          <div className="tabBtn" role="button" tabIndex={0} aria-disabled="true" style={{ opacity: 0.55 }}>
+            <div className="ic">S</div>
+            <div>
+              <span className="name">设置</span>
+              <span className="hint">待接入</span>
+            </div>
           </div>
         </div>
       </div>

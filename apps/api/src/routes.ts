@@ -94,6 +94,15 @@ function loadNpcTeamSnapshot(db: Db, npcId: string) {
 export function installRoutes(app: FastifyInstance, db: Db) {
   app.get("/api/v1/health", async () => ({ ok: true }));
 
+  // Public catalog endpoints (MVP): let the web UI render human-friendly names.
+  app.get("/api/v1/catalog/heroes", async () => {
+    const rows = db
+      .prepare("SELECT id, name FROM heroes_catalog ORDER BY id ASC")
+      .all()
+      .map((r: any) => ({ id: String(r.id), name: String(r.name) }));
+    return { items: rows };
+  });
+
   app.post("/api/v1/auth/register", async (req, reply) => {
     const body = RegisterSchema.parse(req.body);
     const username = body.username;
@@ -335,4 +344,3 @@ export function installRoutes(app: FastifyInstance, db: Db) {
     };
   });
 }
-
