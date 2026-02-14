@@ -63,9 +63,11 @@ export function seedContent(db: Db, contentDir: string) {
 
   const heroesPath = resolve(process.cwd(), contentDir, "heroes.json");
   const npcTeamsPath = resolve(process.cwd(), contentDir, "npc_teams.json");
+  const stagesPath = resolve(process.cwd(), contentDir, "stages.json");
 
   const catalog = loadJsonFile<CatalogHero[]>(heroesPath) ?? FALLBACK_CATALOG;
   const npcTeams = loadJsonFile<any[]>(npcTeamsPath) ?? FALLBACK_NPC_TEAMS;
+  const stages = loadJsonFile<any[]>(stagesPath) ?? [];
 
   // Upsert so changing json updates DB without wiping user data.
   const upsertCatalog = db.prepare(
@@ -96,6 +98,35 @@ export function seedContent(db: Db, contentDir: string) {
   );
   for (const t of npcTeams) {
     upsertNpc.run(String(t.id), String(t.name), JSON.stringify((t as any).teamSnapshot), now, now);
+  }
+
+  if (stages.length > 0) {
+    const upsertStage = db.prepare(
+      `
+      INSERT INTO stages (id, name, npc_id, gold_per_sec, exp_per_sec, next_stage_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        npc_id = excluded.npc_id,
+        gold_per_sec = excluded.gold_per_sec,
+        exp_per_sec = excluded.exp_per_sec,
+        next_stage_id = excluded.next_stage_id,
+        updated_at = excluded.updated_at
+    `
+    );
+
+    for (const s of stages) {
+      upsertStage.run(
+        String(s.id),
+        String(s.name),
+        String(s.npcId),
+        Number(s.goldPerSec ?? 0),
+        Number(s.expPerSec ?? 0),
+        s.nextStageId == null ? null : String(s.nextStageId),
+        now,
+        now
+      );
+    }
   }
 }
 

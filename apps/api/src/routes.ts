@@ -42,12 +42,34 @@ const SimulateSchema = z.object({
     .optional()
 });
 
+const StartAdventureSchema = z.object({
+  stageId: z.string().min(1).optional()
+});
+
+const ClaimAdventureSchema = z.object({});
+
+const FightBossSchema = z.object({
+  teamId: z.string().min(1).default("t_main"),
+  options: z
+    .object({
+      maxTurns: z.number().int().min(1).max(2000).optional()
+    })
+    .optional()
+});
+
 function uniq(xs: string[]): string[] {
   return Array.from(new Set(xs));
 }
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function dtSeconds(fromIso: string, toIso: string): number {
+  const a = Date.parse(fromIso);
+  const b = Date.parse(toIso);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.max(0, Math.floor((b - a) / 1000));
 }
 
 async function signToken(app: FastifyInstance, userId: string): Promise<string> {
@@ -91,6 +113,56 @@ function loadNpcTeamSnapshot(db: Db, npcId: string) {
   return JSON.parse(row.js);
 }
 
+function loadStage(db: Db, stageId: string) {
+  const row = db
+    .prepare("SELECT id, name, npc_id AS npcId, gold_per_sec AS goldPerSec, exp_per_sec AS expPerSec, next_stage_id AS nextStageId FROM stages WHERE id = ?")
+    .get(stageId) as any;
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    npcId: String(row.npcId),
+    goldPerSec: Number(row.goldPerSec),
+    expPerSec: Number(row.expPerSec),
+    nextStageId: row.nextStageId == null ? null : String(row.nextStageId)
+  };
+}
+
+function ensureAdventureState(db: Db, userId: string, defaultStageId: string) {
+  const row = db.prepare("SELECT user_id AS userId FROM adventure_state WHERE user_id = ?").get(userId) as any;
+  if (row) return;
+  const now = nowIso();
+  db.prepare("INSERT INTO adventure_state (user_id, stage_id, started_at, last_claimed_at) VALUES (?, ?, ?, ?)").run(
+    userId,
+    defaultStageId,
+    now,
+    now
+  );
+}
+
+function claimAdventure(db: Db, userId: string): { gainedGold: number; gainedExp: number; stage: any; totals: any } {
+  const st = db
+    .prepare("SELECT stage_id AS stageId, started_at AS startedAt, last_claimed_at AS lastClaimedAt FROM adventure_state WHERE user_id = ?")
+    .get(userId) as any;
+  if (!st) throw new ApiError(500, "INTERNAL_ERROR", "Missing adventure_state");
+
+  const stage = loadStage(db, String(st.stageId));
+  if (!stage) throw new ApiError(500, "INTERNAL_ERROR", "Invalid stage in adventure_state");
+
+  const now = nowIso();
+  const dt = Math.min(dtSeconds(String(st.lastClaimedAt), now), 12 * 3600); // cap 12h offline for MVP
+  const gainedGold = Math.max(0, Math.floor(dt * stage.goldPerSec));
+  const gainedExp = Math.max(0, Math.floor(dt * stage.expPerSec));
+
+  db.transaction(() => {
+    db.prepare("UPDATE users SET gold = gold + ?, exp = exp + ? WHERE id = ?").run(gainedGold, gainedExp, userId);
+    db.prepare("UPDATE adventure_state SET last_claimed_at = ? WHERE user_id = ?").run(now, userId);
+  })();
+
+  const totals = db.prepare("SELECT gold, exp FROM users WHERE id = ?").get(userId) as any;
+  return { gainedGold, gainedExp, stage, totals: { gold: Number(totals.gold), exp: Number(totals.exp) } };
+}
+
 export function installRoutes(app: FastifyInstance, db: Db) {
   app.get("/api/v1/health", async () => ({ ok: true }));
 
@@ -111,7 +183,7 @@ export function installRoutes(app: FastifyInstance, db: Db) {
     const createdAt = nowIso();
 
     try {
-      db.prepare("INSERT INTO users (id, username, password_hash, roster_version, created_at) VALUES (?, ?, ?, 1, ?)").run(
+      db.prepare("INSERT INTO users (id, username, password_hash, roster_version, created_at, gold, exp) VALUES (?, ?, ?, 1, ?, 0, 0)").run(
         id,
         username,
         passwordHash,
@@ -138,6 +210,9 @@ export function installRoutes(app: FastifyInstance, db: Db) {
       db.prepare(
         "INSERT INTO teams (id, user_id, name, hero_ids_json, version, created_at, updated_at) VALUES ('t_main', ?, 'Main', ?, 1, ?, ?)"
       ).run(id, JSON.stringify(heroIds.slice(0, 25)), now, now);
+
+      // Start adventure at stage_1
+      ensureAdventureState(db, id, "stage_1");
     })();
 
     const token = await signToken(app, id);
@@ -156,7 +231,8 @@ export function installRoutes(app: FastifyInstance, db: Db) {
   app.get("/api/v1/me", async (req) => {
     requireAuth(req);
     const userId = req.user.userId;
-    const user = db.prepare("SELECT id, roster_version FROM users WHERE id = ?").get(userId) as any;
+    ensureAdventureState(db, userId, "stage_1");
+    const user = db.prepare("SELECT id, roster_version, gold, exp FROM users WHERE id = ?").get(userId) as any;
     if (!user) throw new ApiError(401, "UNAUTHORIZED", "Unauthorized");
     const teams = db
       .prepare("SELECT id, name, hero_ids_json AS heroIdsJson, updated_at AS updatedAt, version FROM teams WHERE user_id = ?")
@@ -168,7 +244,153 @@ export function installRoutes(app: FastifyInstance, db: Db) {
         updatedAt: String(r.updatedAt),
         version: Number(r.version)
       }));
-    return { userId: String(user.id), rosterVersion: Number(user.roster_version), teams };
+    return {
+      userId: String(user.id),
+      rosterVersion: Number(user.roster_version),
+      gold: Number(user.gold ?? 0),
+      exp: Number(user.exp ?? 0),
+      teams
+    };
+  });
+
+  app.get("/api/v1/adventure", async (req) => {
+    requireAuth(req);
+    const userId = req.user.userId;
+    ensureAdventureState(db, userId, "stage_1");
+
+    const st = db
+      .prepare("SELECT stage_id AS stageId, started_at AS startedAt, last_claimed_at AS lastClaimedAt FROM adventure_state WHERE user_id = ?")
+      .get(userId) as any;
+    const stage = loadStage(db, String(st.stageId));
+    if (!stage) throw new ApiError(500, "INTERNAL_ERROR", "Invalid stage");
+
+    const totals = db.prepare("SELECT gold, exp FROM users WHERE id = ?").get(userId) as any;
+    const now = nowIso();
+    const previewDt = Math.min(dtSeconds(String(st.lastClaimedAt), now), 12 * 3600);
+    const preview = {
+      seconds: previewDt,
+      gold: Math.max(0, Math.floor(previewDt * stage.goldPerSec)),
+      exp: Math.max(0, Math.floor(previewDt * stage.expPerSec))
+    };
+
+    return {
+      stage,
+      startedAt: String(st.startedAt),
+      lastClaimedAt: String(st.lastClaimedAt),
+      balances: { gold: Number(totals.gold ?? 0), exp: Number(totals.exp ?? 0) },
+      claimPreview: preview
+    };
+  });
+
+  app.post("/api/v1/adventure/start", async (req) => {
+    requireAuth(req);
+    const userId = req.user.userId;
+    ensureAdventureState(db, userId, "stage_1");
+    const body = StartAdventureSchema.parse(req.body ?? {});
+
+    const current = db.prepare("SELECT stage_id AS stageId FROM adventure_state WHERE user_id = ?").get(userId) as any;
+    const nextStageId = body.stageId ?? String(current.stageId);
+    const stage = loadStage(db, nextStageId);
+    if (!stage) throw new ApiError(404, "NOT_FOUND", "Stage not found");
+
+    const now = nowIso();
+    db.prepare("UPDATE adventure_state SET stage_id = ?, started_at = ?, last_claimed_at = ? WHERE user_id = ?").run(nextStageId, now, now, userId);
+    return { ok: true, stageId: nextStageId, startedAt: now };
+  });
+
+  app.post("/api/v1/adventure/claim", async (req) => {
+    requireAuth(req);
+    const userId = req.user.userId;
+    ClaimAdventureSchema.parse(req.body ?? {});
+    ensureAdventureState(db, userId, "stage_1");
+    const r = claimAdventure(db, userId);
+    return { gained: { gold: r.gainedGold, exp: r.gainedExp }, balances: r.totals };
+  });
+
+  app.post("/api/v1/adventure/fightBoss", async (req, reply) => {
+    requireAuth(req);
+    const userId = req.user.userId;
+    ensureAdventureState(db, userId, "stage_1");
+    const body = FightBossSchema.parse(req.body ?? {});
+
+    // Claim first so progression doesn't eat offline gains.
+    const claimed = claimAdventure(db, userId);
+
+    const st = db.prepare("SELECT stage_id AS stageId FROM adventure_state WHERE user_id = ?").get(userId) as any;
+    const stage = loadStage(db, String(st.stageId));
+    if (!stage) throw new ApiError(500, "INTERNAL_ERROR", "Invalid stage");
+
+    // Reuse simulate logic (inline here for MVP).
+    const teamRow = db.prepare("SELECT hero_ids_json AS heroIdsJson FROM teams WHERE user_id = ? AND id = ?").get(userId, body.teamId) as any;
+    if (!teamRow) throw new ApiError(404, "TEAM_NOT_FOUND", "Team not found");
+    const heroIds = JSON.parse(String(teamRow.heroIdsJson)) as string[];
+    if (!Array.isArray(heroIds) || heroIds.length < 1 || heroIds.length > 25) throw new ApiError(500, "INTERNAL_ERROR", "Invalid team data");
+
+    const teamA = {
+      heroes: heroIds
+        .map((hid) => loadHeroSnapshotForUser(db, userId, String(hid)))
+        .filter(Boolean)
+        .map((h: any) => ({
+          id: String(h.id),
+          name: String(h.name),
+          level: Number(h.level),
+          stats: h.stats,
+          skills: h.skills
+        }))
+    };
+    if (teamA.heroes.length !== heroIds.length) throw new ApiError(409, "HERO_NOT_OWNED", "Team contains heroes not owned by user");
+
+    const npcTeam = loadNpcTeamSnapshot(db, stage.npcId);
+    if (!npcTeam) throw new ApiError(404, "NPC_NOT_FOUND", "NPC not found");
+    const teamB = npcTeam;
+
+    const seed = randomInt(1, 2147483647);
+    const config = { seed, maxTurns: body.options?.maxTurns ?? 200 };
+    const result = simulateBattle(teamA as any, teamB as any, config as any);
+
+    const battleId = makeId("b");
+    const engineVersion = getEngineVersion();
+    const createdAt = nowIso();
+
+    const inputSnapshot = { teamA, teamB, config };
+    const resultSummary = { winner: result.winner, turns: result.turns };
+
+    db.prepare(
+      "INSERT INTO battle_logs (id, user_id, kind, seed, engine_version, input_snapshot_json, result_summary_json, log_json, created_at) VALUES (?, ?, 'npc', ?, ?, ?, ?, ?, ?)"
+    ).run(
+      battleId,
+      userId,
+      seed,
+      engineVersion,
+      JSON.stringify(inputSnapshot),
+      JSON.stringify(resultSummary),
+      JSON.stringify(result.log),
+      createdAt
+    );
+
+    // Progress on win (A is player).
+    let progressed = false;
+    let newStageId: string | null = null;
+    if (result.winner === "A" && stage.nextStageId) {
+      progressed = true;
+      newStageId = stage.nextStageId;
+      const now = nowIso();
+      db.prepare("UPDATE adventure_state SET stage_id = ?, started_at = ?, last_claimed_at = ? WHERE user_id = ?").run(newStageId, now, now, userId);
+    }
+
+    reply.code(201).send({
+      claimed,
+      battle: {
+        battleId,
+        seed,
+        engineVersion,
+        winner: result.winner,
+        turns: result.turns,
+        log: result.log
+      },
+      progressed,
+      newStageId
+    });
   });
 
   app.get("/api/v1/heroes", async (req) => {

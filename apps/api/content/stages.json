@@ -1,0 +1,27 @@
+[
+  {
+    "id": "stage_1",
+    "name": "草原入口",
+    "npcId": "stage_1_boss",
+    "goldPerSec": 2,
+    "expPerSec": 1,
+    "nextStageId": "stage_2"
+  },
+  {
+    "id": "stage_2",
+    "name": "矿洞前厅",
+    "npcId": "stage_1_boss",
+    "goldPerSec": 3,
+    "expPerSec": 2,
+    "nextStageId": "stage_3"
+  },
+  {
+    "id": "stage_3",
+    "name": "碎石走廊",
+    "npcId": "stage_1_boss",
+    "goldPerSec": 4,
+    "expPerSec": 3,
+    "nextStageId": null
+  }
+]
+

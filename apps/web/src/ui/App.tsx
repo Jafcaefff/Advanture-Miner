@@ -4,6 +4,8 @@ import { apiFetch } from "../api";
 type Me = {
   userId: string;
   rosterVersion: number;
+  gold?: number;
+  exp?: number;
   teams: Array<{ id: string; name: string; heroIds: string[]; updatedAt: string; version: number }>;
 };
 
@@ -17,6 +19,14 @@ type SimResult = {
   winner: "A" | "B" | "Draw";
   turns: number;
   log: any[];
+};
+
+type AdventureState = {
+  stage: { id: string; name: string; npcId: string; goldPerSec: number; expPerSec: number; nextStageId: string | null };
+  startedAt: string;
+  lastClaimedAt: string;
+  balances: { gold: number; exp: number };
+  claimPreview: { seconds: number; gold: number; exp: number };
 };
 
 function useLocalStorageState(key: string, init: string) {
@@ -47,6 +57,7 @@ function fmtLogLine(e: any): string {
 export function App() {
   const [token, setToken] = useLocalStorageState("am_token", "");
 
+  const [tab, setTab] = useState<"team" | "adventure" | "mine" | "settings">("team");
   const [authMode, setAuthMode] = useState<"login" | "register">("register");
   const [username, setUsername] = useState("test_user2");
   const [password, setPassword] = useState("password123");
@@ -54,6 +65,7 @@ export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [heroes, setHeroes] = useState<HeroItem[]>([]);
   const [catalog, setCatalog] = useState<Record<string, string>>({});
+  const [adv, setAdv] = useState<AdventureState | null>(null);
 
   const [teamId, setTeamId] = useState("t_main");
   const [teamVersion, setTeamVersion] = useState<number | null>(null);
@@ -63,6 +75,9 @@ export function App() {
 
   const [busy, setBusy] = useState(false);
   const [battle, setBattle] = useState<SimResult | null>(null);
+  const [visibleLog, setVisibleLog] = useState(0);
+  const [playSpeed, setPlaySpeed] = useState<"slow" | "normal" | "fast">("normal");
+  const [playing, setPlaying] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const heroOptions = useMemo(() => {
@@ -79,6 +94,8 @@ export function App() {
 
     const me = await apiFetch<Me>("/api/v1/me", { token: tk });
     setMe(me);
+    const adv = await apiFetch<AdventureState>("/api/v1/adventure", { token: tk });
+    setAdv(adv);
     const items: HeroItem[] = [];
     let cursor: string | null | undefined = undefined;
     while (items.length < 200) {
@@ -107,6 +124,23 @@ export function App() {
     refreshAll(token).catch((e) => setErr(String(e?.message ?? e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    if (!battle) return;
+    setVisibleLog(0);
+    setPlaying(true);
+  }, [battle?.battleId]);
+
+  useEffect(() => {
+    if (!battle || !playing) return;
+    const total = battle.log.length;
+    if (visibleLog >= total) return;
+    const ms = playSpeed === "slow" ? 240 : playSpeed === "fast" ? 50 : 110;
+    const t = window.setInterval(() => {
+      setVisibleLog((v) => Math.min(total, v + 1));
+    }, ms);
+    return () => window.clearInterval(t);
+  }, [battle, playing, playSpeed, visibleLog]);
 
   async function doAuth() {
     setBusy(true);
@@ -155,6 +189,36 @@ export function App() {
         body: { teamId, enemy: { kind: "npc", npcId: "stage_1_boss" }, options: { maxTurns: 200 } }
       });
       setBattle(r);
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function advClaim() {
+    if (!token) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await apiFetch("/api/v1/adventure/claim", { method: "POST", token, body: {} });
+      await refreshAll(token);
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function advFightBoss() {
+    if (!token) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await apiFetch<any>("/api/v1/adventure/fightBoss", { method: "POST", token, body: { teamId: "t_main" } });
+      setBattle(r.battle as SimResult);
+      await refreshAll(token);
+      setTab("team");
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -254,168 +318,237 @@ export function App() {
               user={me?.userId ?? "…"} · rosterV={me?.rosterVersion ?? "…"} · team={teamId} · heroes={heroes.length}
             </div>
           </div>
-          <div className="pill">
-            <span className="mono">token</span>
-            <button className="danger" onClick={() => setToken("")} disabled={busy}>
-              退出
-            </button>
+          <div className="stack">
+            <span className="pill mono">gold={adv?.balances.gold ?? me?.gold ?? 0}</span>
+            <span className="pill mono">exp={adv?.balances.exp ?? me?.exp ?? 0}</span>
+            <div className="pill">
+              <span className="mono">token</span>
+              <button className="danger" onClick={() => setToken("")} disabled={busy}>
+                退出
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="grid">
-        <div className="panel panelTall">
-          <div className="hd">
-            <h2>Team (25 slots)</h2>
-            <div className="pill">version={teamVersion ?? "?"}</div>
-          </div>
-          <div className="bd">
-            <div className="teamFixed">
+      {tab === "adventure" ? (
+        <div className="grid">
+          <div className="panel panelTall">
+            <div className="hd">
+              <h2>Adventure</h2>
+              <div className="pill mono">{adv ? adv.stage.id : "..."}</div>
+            </div>
+            <div className="bd">
               <div className="row">
-                <div className="field">
-                  <label>队伍名</label>
-                  <input value={teamName} onChange={(e) => setTeamName(e.target.value)} />
+                <div className="pill mono">关卡: {adv ? `${adv.stage.name} (${adv.stage.id})` : "..."}</div>
+                <div className="pill mono">收益: +{adv?.stage.goldPerSec ?? 0}g/s · +{adv?.stage.expPerSec ?? 0}exp/s</div>
+                <div className="pill mono">
+                  可领取: +{adv?.claimPreview.gold ?? 0}g · +{adv?.claimPreview.exp ?? 0}exp (sec={adv?.claimPreview.seconds ?? 0})
                 </div>
                 <div className="stack">
-                  <button className="primary" onClick={saveTeam} disabled={busy || heroIds.length === 0}>
-                    保存队伍
+                  <button className="primary" onClick={advClaim} disabled={busy}>
+                    领取收益
                   </button>
-                  <button className="primary" onClick={fight} disabled={busy || heroIds.length === 0}>
-                    挑战 stage_1_boss
+                  <button className="primary" onClick={advFightBoss} disabled={busy}>
+                    打 Boss
                   </button>
-                  <span className="pill mono">站位越靠前越优先</span>
-                  <span className="pill mono">Shift+点格子: 交换</span>
                 </div>
                 {err ? <div className="errorBox mono">{err}</div> : null}
               </div>
-              <div style={{ height: 12 }} />
             </div>
+          </div>
 
-            <div className="teamScroll">
-              <div className="formationWrap">
-                <div className="formation">
-                  {Array.from({ length: Math.min(25, heroIds.length) }, (_, idx) => {
-                    const hid = heroIds[idx]!;
-                    const label = getHeroLabelById(hid);
-                    const sel = idx === selectedSlot;
-                    return (
-                      <button
-                        key={`${idx}-${hid}`}
-                        className={`tile ${sel ? "sel" : ""} ${idx === 0 ? "front" : ""}`}
-                        disabled={busy}
-                        onClick={(e) => {
-                          if ((e as any).shiftKey && selectedSlot !== idx) swap(selectedSlot, idx);
-                          setSelectedSlot(idx);
-                        }}
-                        title={label}
-                      >
-                        <span className="n">{String(idx + 1).padStart(2, "0")}</span>
-                        <span className="nm">{label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="editor">
-                  <div className="pill mono">
-                    slot={String(selectedSlot + 1).padStart(2, "0")} ·{" "}
-                    {heroIds[selectedSlot] ? getHeroLabelById(heroIds[selectedSlot]!) : "-"}
+          <div className="panel panelTall">
+            <div className="hd">
+              <h2>Tips</h2>
+              <div className="pill mono">MVP</div>
+            </div>
+            <div className="bd">
+              <div className="row">
+                <div className="pill mono">Boss 战仍用 25 人概率叠加引擎裁决</div>
+                <div className="pill mono">胜利会推进到下一关（如果有 nextStageId）</div>
+                <div className="pill mono">离线收益上限 12 小时（MVP）</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="grid">
+          <div className="panel panelTall">
+            <div className="hd">
+              <h2>Team (25 slots)</h2>
+              <div className="pill">version={teamVersion ?? "?"}</div>
+            </div>
+            <div className="bd">
+              <div className="teamFixed">
+                <div className="row">
+                  <div className="field">
+                    <label>队伍名</label>
+                    <input value={teamName} onChange={(e) => setTeamName(e.target.value)} />
                   </div>
-                  <div className="row">
-                    <div className="field">
-                      <label>选择英雄</label>
-                      <select
-                        value={heroIds[selectedSlot] ?? ""}
-                        onChange={(e) => setHeroAt(selectedSlot, e.target.value)}
-                        disabled={busy || heroIds.length === 0}
-                      >
-                        {heroOptions.map((o) => (
-                          <option value={o.id} key={o.id}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
+                  <div className="stack">
+                    <button className="primary" onClick={saveTeam} disabled={busy || heroIds.length === 0}>
+                      保存队伍
+                    </button>
+                    <button className="primary" onClick={fight} disabled={busy || heroIds.length === 0}>
+                      挑战 stage_1_boss
+                    </button>
+                    <span className="pill mono">站位越靠前越优先</span>
+                    <span className="pill mono">Shift+点格子: 交换</span>
+                  </div>
+                  {err ? <div className="errorBox mono">{err}</div> : null}
+                </div>
+                <div style={{ height: 12 }} />
+              </div>
+
+              <div className="teamScroll">
+                <div className="formationWrap">
+                  <div className="formation">
+                    {Array.from({ length: Math.min(25, heroIds.length) }, (_, idx) => {
+                      const hid = heroIds[idx]!;
+                      const label = getHeroLabelById(hid);
+                      const sel = idx === selectedSlot;
+                      return (
+                        <button
+                          key={`${idx}-${hid}`}
+                          className={`tile ${sel ? "sel" : ""} ${idx === 0 ? "front" : ""}`}
+                          disabled={busy}
+                          onClick={(e) => {
+                            if ((e as any).shiftKey && selectedSlot !== idx) swap(selectedSlot, idx);
+                            setSelectedSlot(idx);
+                          }}
+                          title={label}
+                        >
+                          <span className="n">{String(idx + 1).padStart(2, "0")}</span>
+                          <span className="nm">{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="editor">
+                    <div className="pill mono">
+                      slot={String(selectedSlot + 1).padStart(2, "0")} ·{" "}
+                      {heroIds[selectedSlot] ? getHeroLabelById(heroIds[selectedSlot]!) : "-"}
                     </div>
-                    <div className="stack">
-                      <button onClick={() => swap(selectedSlot, selectedSlot - 1)} disabled={busy || selectedSlot === 0}>
-                        前移 ▲
-                      </button>
-                      <button
-                        onClick={() => swap(selectedSlot, selectedSlot + 1)}
-                        disabled={busy || selectedSlot >= heroIds.length - 1}
-                      >
-                        后移 ▼
-                      </button>
+                    <div className="row">
+                      <div className="field">
+                        <label>选择英雄</label>
+                        <select
+                          value={heroIds[selectedSlot] ?? ""}
+                          onChange={(e) => setHeroAt(selectedSlot, e.target.value)}
+                          disabled={busy || heroIds.length === 0}
+                        >
+                          {heroOptions.map((o) => (
+                            <option value={o.id} key={o.id}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="stack">
+                        <button onClick={() => swap(selectedSlot, selectedSlot - 1)} disabled={busy || selectedSlot === 0}>
+                          前移 ▲
+                        </button>
+                        <button
+                          onClick={() => swap(selectedSlot, selectedSlot + 1)}
+                          disabled={busy || selectedSlot >= heroIds.length - 1}
+                        >
+                          后移 ▼
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="panel panelTall">
-          <div className="hd">
-            <h2>Battle Log</h2>
-            <div className="pill">
-              {battle ? (
-                <>
-                  <span className="mono">battleId={battle.battleId}</span>
-                  <span className={battle.winner === "A" ? "ok" : battle.winner === "B" ? "bad" : ""}>winner={battle.winner}</span>
-                  <span className="mono">turns={battle.turns}</span>
-                </>
-              ) : (
-                <span className="mono">no battle yet</span>
-              )}
-            </div>
-          </div>
-          <div className="bd">
-            <div className="battleBody">
-              <div className="log">
-                {(battle?.log ?? []).map((e, i) => (
-                  <div
-                    className={`logLine ${e?.t === "battle_end" ? "end" : e?.side === "A" ? "a" : e?.side === "B" ? "b" : ""}`}
-                    key={i}
-                  >
-                    <strong>{String(i + 1).padStart(3, "0")}</strong> {fmtLogLine(e)}
-                  </div>
-                ))}
+          <div className="panel panelTall">
+            <div className="hd">
+              <h2>Battle Log</h2>
+              <div className="pill">
+                {battle ? (
+                  <>
+                    <span className="mono">battleId={battle.battleId}</span>
+                    <span className={battle.winner === "A" ? "ok" : battle.winner === "B" ? "bad" : ""}>winner={battle.winner}</span>
+                    <span className="mono">turns={battle.turns}</span>
+                  </>
+                ) : (
+                  <span className="mono">no battle yet</span>
+                )}
               </div>
-              {battle ? (
-                <div style={{ marginTop: 10 }} className="stack">
-                  <span className="pill mono">seed={battle.seed}</span>
-                  <span className="pill mono">engine={battle.engineVersion}</span>
+            </div>
+            <div className="bd">
+              <div className="battleBody">
+                <div className="stack" style={{ marginBottom: 10 }}>
+                  <button onClick={() => setPlaying((p) => !p)} disabled={!battle}>
+                    {playing ? "暂停" : "播放"}
+                  </button>
+                  <button onClick={() => setVisibleLog(battle ? battle.log.length : 0)} disabled={!battle}>
+                    跳到结尾
+                  </button>
+                  <select value={playSpeed} onChange={(e) => setPlaySpeed(e.target.value as any)} disabled={!battle}>
+                    <option value="slow">慢</option>
+                    <option value="normal">中</option>
+                    <option value="fast">快</option>
+                  </select>
+                  <span className="pill mono">
+                    {battle ? `${visibleLog}/${battle.log.length}` : "0/0"}
+                  </span>
                 </div>
-              ) : null}
+
+                <div className="log">
+                  {(battle?.log ?? []).slice(0, visibleLog).map((e, i) => (
+                    <div
+                      className={`logLine ${e?.t === "battle_end" ? "end" : e?.side === "A" ? "a" : e?.side === "B" ? "b" : ""}`}
+                      key={i}
+                    >
+                      <strong>{String(i + 1).padStart(3, "0")}</strong> {fmtLogLine(e)}
+                    </div>
+                  ))}
+                </div>
+                {battle ? (
+                  <div style={{ marginTop: 10 }} className="stack">
+                    <span className="pill mono">seed={battle.seed}</span>
+                    <span className="pill mono">engine={battle.engineVersion}</span>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="bottomNav">
         <div className="bar">
-          <div className="tabBtn active" role="button" tabIndex={0}>
+          <div className={`tabBtn ${tab === "team" ? "active" : ""}`} role="button" tabIndex={0} onClick={() => setTab("team")}>
             <div className="ic">T</div>
             <div>
               <span className="name">队伍</span>
               <span className="hint">25人站位</span>
             </div>
           </div>
-          <div className="tabBtn" role="button" tabIndex={0} aria-disabled="true" style={{ opacity: 0.55 }}>
+          <div
+            className={`tabBtn ${tab === "adventure" ? "active" : ""}`}
+            role="button"
+            tabIndex={0}
+            onClick={() => setTab("adventure")}
+          >
             <div className="ic">A</div>
             <div>
               <span className="name">冒险</span>
-              <span className="hint">待接入</span>
+              <span className="hint">{adv ? adv.stage.id : "..."}</span>
             </div>
           </div>
-          <div className="tabBtn" role="button" tabIndex={0} aria-disabled="true" style={{ opacity: 0.55 }}>
+          <div className={`tabBtn ${tab === "mine" ? "active" : ""}`} role="button" tabIndex={0} onClick={() => setTab("mine")}>
             <div className="ic">M</div>
             <div>
               <span className="name">挖矿</span>
               <span className="hint">待接入</span>
             </div>
           </div>
-          <div className="tabBtn" role="button" tabIndex={0} aria-disabled="true" style={{ opacity: 0.55 }}>
+          <div className={`tabBtn ${tab === "settings" ? "active" : ""}`} role="button" tabIndex={0} onClick={() => setTab("settings")}>
             <div className="ic">S</div>
             <div>
               <span className="name">设置</span>

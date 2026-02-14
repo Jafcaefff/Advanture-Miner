@@ -95,6 +95,35 @@ const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_battle_logs_user_created ON battle_logs(user_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_battle_logs_kind_created ON battle_logs(kind, created_at);
     `
+  },
+  {
+    id: "002_adventure_economy",
+    up: `
+      -- SQLite doesn't support IF NOT EXISTS for ADD COLUMN, so ignore "duplicate column" errors by making this migration idempotent in practice:
+      -- On a fresh DB this adds columns; on an existing DB the migration only runs once (tracked in schema_migrations).
+      ALTER TABLE users ADD COLUMN gold INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN exp INTEGER NOT NULL DEFAULT 0;
+
+      CREATE TABLE IF NOT EXISTS stages (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        npc_id TEXT NOT NULL,
+        gold_per_sec INTEGER NOT NULL,
+        exp_per_sec INTEGER NOT NULL,
+        next_stage_id TEXT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS adventure_state (
+        user_id TEXT PRIMARY KEY,
+        stage_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        last_claimed_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_adventure_state_stage_id ON adventure_state(stage_id);
+    `
   }
 ];
 
