@@ -201,11 +201,23 @@ a {
 
 .panel {
   position: relative;
+  display: flex;
+  flex-direction: column;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
   background: linear-gradient(180deg, rgba(58, 43, 22, 0.92), rgba(36, 26, 14, 0.92));
   border: 2px solid rgba(255, 210, 122, 0.26);
+}
+
+.panelTall {
+  height: min(760px, calc(100vh - 220px));
+}
+
+@media (max-width: 720px) {
+  .panelTall {
+    height: min(760px, calc(100vh - 260px));
+  }
 }
 
 .panel::before {
@@ -243,6 +255,27 @@ a {
 .panel .bd {
   position: relative;
   padding: 14px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.teamFixed {
+  flex: 0 0 auto;
+}
+
+.teamScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 18px;
+}
+
+.battleBody {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 .row {
@@ -487,7 +520,8 @@ button:disabled {
 }
 
 .log {
-  height: 520px;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 12px;
   border: 2px solid rgba(255, 210, 122, 0.14);
