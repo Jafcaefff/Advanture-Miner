@@ -1,20 +1,25 @@
 :root {
-  --bg0: #0b1020;
-  --bg1: #111b37;
-  --ink: #e8edf8;
-  --muted: #b7c3de;
+  --bg0: #070a13;
+  --bg1: #0b1020;
+  --bg2: #0f1a3a;
+  --ink: #eef2ff;
+  --muted: rgba(238, 242, 255, 0.72);
+  --muted2: rgba(238, 242, 255, 0.52);
   --line: rgba(255, 255, 255, 0.12);
-  --card: rgba(17, 27, 55, 0.72);
-  --card2: rgba(8, 12, 25, 0.55);
+  --line2: rgba(255, 255, 255, 0.08);
+  --card: rgba(18, 27, 58, 0.72);
+  --card2: rgba(7, 10, 19, 0.55);
   --good: #64d2a1;
   --bad: #ff6b6b;
   --accent: #ffcc66;
   --accent2: #8be9fd;
+  --accent3: #b6a1ff;
   --shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
-  --radius: 16px;
-  --radius2: 12px;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  --shadow2: 0 14px 40px rgba(0, 0, 0, 0.45);
+  --radius: 18px;
+  --radius2: 14px;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
 }
 
 * {
@@ -31,10 +36,24 @@ body {
   font-family: var(--sans);
   color: var(--ink);
   background:
-    radial-gradient(900px 650px at 15% 20%, rgba(139, 233, 253, 0.18), transparent 60%),
-    radial-gradient(700px 520px at 80% 18%, rgba(255, 204, 102, 0.16), transparent 55%),
-    radial-gradient(800px 700px at 70% 85%, rgba(100, 210, 161, 0.12), transparent 58%),
-    linear-gradient(180deg, var(--bg0), var(--bg1));
+    radial-gradient(900px 650px at 10% 12%, rgba(139, 233, 253, 0.16), transparent 60%),
+    radial-gradient(720px 540px at 82% 18%, rgba(255, 204, 102, 0.14), transparent 55%),
+    radial-gradient(900px 780px at 72% 92%, rgba(182, 161, 255, 0.12), transparent 58%),
+    radial-gradient(1100px 900px at 30% 88%, rgba(100, 210, 161, 0.1), transparent 60%),
+    linear-gradient(180deg, var(--bg0), var(--bg2));
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(60% 60% at 50% 40%, black 45%, transparent 100%);
+  opacity: 0.55;
 }
 
 a {
@@ -45,6 +64,18 @@ a {
   max-width: 1120px;
   margin: 0 auto;
   padding: 28px 18px 56px;
+  animation: enter 380ms ease-out both;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .top {
@@ -62,8 +93,9 @@ a {
 
 .brand h1 {
   margin: 0;
-  font-size: 22px;
+  font-size: 24px;
   letter-spacing: 0.2px;
+  line-height: 1.05;
 }
 
 .brand .sub {
@@ -86,11 +118,16 @@ a {
 }
 
 .card {
-  background: var(--card);
+  background:
+    radial-gradient(1200px 650px at 15% 0%, rgba(255, 255, 255, 0.06), transparent 40%),
+    radial-gradient(900px 620px at 85% 0%, rgba(255, 204, 102, 0.06), transparent 45%),
+    radial-gradient(900px 620px at 65% 120%, rgba(139, 233, 253, 0.05), transparent 45%),
+    var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
+  backdrop-filter: blur(10px);
 }
 
 .card .hd {
@@ -148,10 +185,18 @@ textarea {
   width: 100%;
   padding: 10px 10px;
   border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--card2);
+  border: 1px solid var(--line2);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)), var(--card2);
   color: var(--ink);
   outline: none;
+  transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: rgba(139, 233, 253, 0.55);
+  box-shadow: 0 0 0 3px rgba(139, 233, 253, 0.14);
 }
 
 textarea {
@@ -161,27 +206,35 @@ textarea {
 }
 
 button {
-  border: 1px solid var(--line);
+  border: 1px solid var(--line2);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
   color: var(--ink);
   padding: 10px 12px;
   border-radius: 12px;
   cursor: pointer;
+  box-shadow: var(--shadow2);
+  transition: transform 120ms ease, border-color 120ms ease, filter 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
 }
 
 button.primary {
-  border-color: rgba(255, 204, 102, 0.35);
-  background: linear-gradient(180deg, rgba(255, 204, 102, 0.25), rgba(255, 204, 102, 0.12));
+  border-color: rgba(255, 204, 102, 0.5);
+  background: linear-gradient(180deg, rgba(255, 204, 102, 0.32), rgba(255, 204, 102, 0.12));
 }
 
 button.danger {
-  border-color: rgba(255, 107, 107, 0.35);
-  background: linear-gradient(180deg, rgba(255, 107, 107, 0.22), rgba(255, 107, 107, 0.1));
+  border-color: rgba(255, 107, 107, 0.55);
+  background: linear-gradient(180deg, rgba(255, 107, 107, 0.26), rgba(255, 107, 107, 0.1));
 }
 
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .pill {
@@ -191,7 +244,7 @@ button:disabled {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(8, 12, 25, 0.35);
+  background: rgba(7, 10, 19, 0.4);
   color: var(--muted);
   font-family: var(--mono);
   font-size: 12px;
@@ -201,18 +254,35 @@ button:disabled {
   font-family: var(--mono);
 }
 
+.stack {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.errorBox {
+  border: 1px solid rgba(255, 107, 107, 0.28);
+  background: linear-gradient(180deg, rgba(255, 107, 107, 0.12), rgba(0, 0, 0, 0.08));
+  padding: 10px 12px;
+  border-radius: 14px;
+  color: rgba(255, 225, 225, 0.92);
+}
+
 .teamList {
   display: grid;
   gap: 10px;
 }
 
 .slot {
-  border: 1px solid var(--line);
-  background: rgba(8, 12, 25, 0.35);
+  border: 1px solid var(--line2);
+  background:
+    radial-gradient(420px 120px at 20% 0%, rgba(255, 255, 255, 0.06), transparent 55%),
+    rgba(7, 10, 19, 0.35);
   border-radius: 14px;
   padding: 10px 10px;
   display: grid;
-  grid-template-columns: 40px 1fr 92px;
+  grid-template-columns: 46px 1fr 104px;
   gap: 10px;
   align-items: center;
 }
@@ -221,6 +291,10 @@ button:disabled {
   font-family: var(--mono);
   color: var(--muted);
   text-align: center;
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 8px 0;
+  background: rgba(0, 0, 0, 0.14);
 }
 
 .slot .ctl {
@@ -237,9 +311,11 @@ button:disabled {
   height: 520px;
   overflow: auto;
   padding: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line2);
   border-radius: 14px;
-  background: rgba(8, 12, 25, 0.35);
+  background:
+    radial-gradient(520px 220px at 20% 0%, rgba(139, 233, 253, 0.06), transparent 60%),
+    rgba(7, 10, 19, 0.35);
 }
 
 .logLine {
@@ -249,11 +325,39 @@ button:disabled {
   color: var(--muted);
   padding: 6px 8px;
   border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+  animation: lineIn 180ms ease-out both;
+}
+
+@keyframes lineIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .logLine strong {
   color: var(--ink);
   font-weight: 600;
+}
+
+.logLine.a {
+  color: rgba(139, 233, 253, 0.78);
+}
+
+.logLine.b {
+  color: rgba(255, 204, 102, 0.78);
+}
+
+.logLine.end {
+  color: rgba(238, 242, 255, 0.86);
+  background: rgba(0, 0, 0, 0.14);
+  border-radius: 10px;
+  border-bottom: none;
+  margin-top: 8px;
 }
 
 .ok {
@@ -263,4 +367,3 @@ button:disabled {
 .bad {
   color: var(--bad);
 }
-

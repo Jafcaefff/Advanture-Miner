@@ -182,29 +182,33 @@ export function App() {
                 disabled={busy}
                 className={authMode === "register" ? "primary" : ""}
               >
-                Register
+                注册
               </button>
               <button onClick={() => setAuthMode("login")} disabled={busy} className={authMode === "login" ? "primary" : ""}>
-                Login
+                登录
               </button>
             </div>
           </div>
           <div className="bd">
             <div className="row2">
               <div className="field">
-                <label>username</label>
+                <label>用户名</label>
                 <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="test_user" />
               </div>
               <div className="field">
-                <label>password</label>
+                <label>密码</label>
                 <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" />
               </div>
             </div>
             <div style={{ height: 10 }} />
             <button className="primary" onClick={doAuth} disabled={busy}>
-              {authMode === "register" ? "Create account" : "Login"}
+              {authMode === "register" ? "创建账号" : "登录"}
             </button>
-            {err ? <div style={{ marginTop: 10 }} className="bad mono">{err}</div> : null}
+            {err ? (
+              <div style={{ marginTop: 10 }} className="errorBox mono">
+                {err}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -216,12 +220,14 @@ export function App() {
       <div className="top">
         <div className="brand">
           <h1>Adventure Miner</h1>
-          <div className="sub">user={me?.userId ?? "…"} · team={teamId} · heroes={heroes.length}</div>
+          <div className="sub">
+            user={me?.userId ?? "…"} · rosterV={me?.rosterVersion ?? "…"} · team={teamId} · heroes={heroes.length}
+          </div>
         </div>
         <div className="pill">
           <span className="mono">token</span>
           <button className="danger" onClick={() => setToken("")} disabled={busy}>
-            Logout
+            退出
           </button>
         </div>
       </div>
@@ -235,18 +241,19 @@ export function App() {
           <div className="bd">
             <div className="row">
               <div className="field">
-                <label>teamName</label>
+                <label>队伍名</label>
                 <input value={teamName} onChange={(e) => setTeamName(e.target.value)} />
               </div>
-              <div className="pill">
+              <div className="stack">
                 <button className="primary" onClick={saveTeam} disabled={busy || heroIds.length === 0}>
-                  Save Team
+                  保存队伍
                 </button>
                 <button className="primary" onClick={fight} disabled={busy || heroIds.length === 0}>
-                  Challenge stage_1_boss
+                  挑战 stage_1_boss
                 </button>
+                <span className="pill mono">站位越靠前越优先</span>
               </div>
-              {err ? <div className="bad mono">{err}</div> : null}
+              {err ? <div className="errorBox mono">{err}</div> : null}
             </div>
             <div style={{ height: 12 }} />
             <div className="teamList">
@@ -270,10 +277,10 @@ export function App() {
                   </div>
                   <div className="ctl">
                     <button onClick={() => swap(idx, idx - 1)} disabled={busy || idx === 0}>
-                      Up
+                      ▲
                     </button>
                     <button onClick={() => swap(idx, idx + 1)} disabled={busy || idx === heroIds.length - 1}>
-                      Down
+                      ▼
                     </button>
                   </div>
                 </div>
@@ -300,15 +307,15 @@ export function App() {
           <div className="bd">
             <div className="log">
               {(battle?.log ?? []).map((e, i) => (
-                <div className="logLine" key={i}>
+                <div className={`logLine ${e?.t === "battle_end" ? "end" : e?.side === "A" ? "a" : e?.side === "B" ? "b" : ""}`} key={i}>
                   <strong>{String(i + 1).padStart(3, "0")}</strong> {fmtLogLine(e)}
                 </div>
               ))}
             </div>
             {battle ? (
-              <div style={{ marginTop: 10 }} className="pill">
-                <span className="mono">seed={battle.seed}</span>
-                <span className="mono">engine={battle.engineVersion}</span>
+              <div style={{ marginTop: 10 }} className="stack">
+                <span className="pill mono">seed={battle.seed}</span>
+                <span className="pill mono">engine={battle.engineVersion}</span>
               </div>
             ) : null}
           </div>
@@ -317,4 +324,3 @@ export function App() {
     </div>
   );
 }
-
