@@ -41,17 +41,18 @@ function useLocalStorageState(key: string, init: string) {
 
 function fmtLogLine(e: any): string {
   if (!e || typeof e !== "object") return String(e);
-  if (e.t === "turn_start") return `T${e.turn} ${e.side}: start`;
+  const side = e.side === "A" ? "我方" : e.side === "B" ? "敌方" : String(e.side ?? "?");
+  if (e.t === "turn_start") return `回合${e.turn} ${side}: 开始`;
   if (e.t === "action") {
-    const head = `T${e.turn} ${e.side}: ${e.actorName}`;
+    const head = `回合${e.turn} ${side}: ${e.actorName}`;
     if (e.action === "normal") {
-      return `${head} normal -> ${e.targetName} ${e.evaded ? "(evaded)" : `-${e.damage}`} (hp=${e.targetHpAfter})`;
+      return `${head} 普攻 -> ${e.targetName} ${e.evaded ? "(闪避)" : `-${e.damage}`} (hp=${e.targetHpAfter})`;
     }
-    return `${head} skill[${e.skillName}] -> ${e.targetName} ${e.evaded ? "(evaded)" : `-${e.damage}`} (hp=${e.targetHpAfter})`;
+    return `${head} 技能[${e.skillName}] -> ${e.targetName} ${e.evaded ? "(闪避)" : `-${e.damage}`} (hp=${e.targetHpAfter})`;
   }
-  if (e.t === "heal") return `T${e.turn} ${e.side}: ${e.actorName} heal[${e.skillName}] -> ${e.targetName} +${e.amount} (hp=${e.targetHpAfter})`;
-  if (e.t === "buff") return `T${e.turn} ${e.side}: ${e.actorName} buff[${e.skillName}] ${e.stat} ${e.amount} (${e.durationTurns}t)`;
-  if (e.t === "hero_down") return `T${e.turn} ${e.side}: ${e.heroName} down`;
+  if (e.t === "heal") return `回合${e.turn} ${side}: ${e.actorName} 治疗[${e.skillName}] -> ${e.targetName} +${e.amount} (hp=${e.targetHpAfter})`;
+  if (e.t === "buff") return `回合${e.turn} ${side}: ${e.actorName} 增益[${e.skillName}] ${e.stat} ${e.amount} (${e.durationTurns}回合)`;
+  if (e.t === "hero_down") return `回合${e.turn} ${side}: ${e.heroName} 倒下`;
   if (e.t === "battle_end") return `结束: 胜者=${e.winner} 回合=${e.turns}`;
   return JSON.stringify(e);
 }
@@ -555,7 +556,35 @@ export function App() {
                       );
                     })()
                   ) : (
-                  <div className="pill mono">等待战斗数据…</div>
+                    <div className="row">
+                      <div className="pill mono">点击左侧“挑战”或在“冒险”里打 Boss 开始战斗</div>
+                      <div className="arenaRow">
+                        <div className="fighter">
+                          <div className="spriteBox">
+                            <PixelHero tint="#ffd27a" />
+                          </div>
+                          <div className="fighterMeta">
+                            <div className="fighterName">我方</div>
+                            <div className="hpBar">
+                              <div className="hpFill" style={{ width: "100%" }} />
+                            </div>
+                            <div className="hpText">生命 100/100</div>
+                          </div>
+                        </div>
+                        <div className="fighter right">
+                          <div className="fighterMeta" style={{ textAlign: "right" }}>
+                            <div className="fighterName">敌方</div>
+                            <div className="hpBar">
+                              <div className="hpFill" style={{ width: "100%" }} />
+                            </div>
+                            <div className="hpText">生命 100/100</div>
+                          </div>
+                          <div className="spriteBox">
+                            <PixelGolem tint="#b9b3aa" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
 

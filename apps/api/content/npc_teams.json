@@ -1,18 +1,17 @@
 [
   {
     "id": "stage_1_boss",
-    "name": "Stage 1 Boss",
+    "name": "第一关 Boss",
     "teamSnapshot": {
       "heroes": [
         {
           "id": "npc_boss_1",
-          "name": "Golem",
+          "name": "魔像",
           "level": 1,
           "stats": { "hp": 550, "atk": 20, "def": 2, "eva": 0.01, "preempt": 0.03, "king": 0.02 },
-          "skills": [{ "id": "smash", "name": "Smash", "kind": "damage", "chance": 0.1, "power": 1.7 }]
+          "skills": [{ "id": "smash", "name": "重击", "kind": "damage", "chance": 0.1, "power": 1.7 }]
         }
       ]
     }
   }
 ]
-
