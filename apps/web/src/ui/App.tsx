@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../api";
 import { PixelGolem, PixelHero } from "./pixel";
 
@@ -20,7 +20,7 @@ type SimResult = {
   winner: "A" | "B" | "Draw";
   turns: number;
   log: any[];
-  scene?: { rosterA: Array<{ name: string; maxHp: number }>; rosterB: Array<{ name: string; maxHp: number }> };
+  scene?: { rosterA: Array<{ id: string; name: string; maxHp: number }>; rosterB: Array<{ id: string; name: string; maxHp: number }> };
 };
 
 type AdventureState = {
@@ -60,64 +60,60 @@ function fmtLogLine(e: any): string {
   return JSON.stringify(e);
 }
 
-function computeFrontline(battle: SimResult | null, visibleLog: number) {
+function computeTeamBars(battle: SimResult | null, visibleLog: number) {
   const scene = battle?.scene;
   const rosterA = scene?.rosterA ?? [];
   const rosterB = scene?.rosterB ?? [];
 
-  let aIdx = 0;
-  let bIdx = 0;
-  let aHp = Math.max(1, Math.floor(Number(rosterA[0]?.maxHp ?? 1)));
-  let bHp = Math.max(1, Math.floor(Number(rosterB[0]?.maxHp ?? 1)));
+  const aHpById = new Map<string, number>();
+  const bHpById = new Map<string, number>();
+  let aMax = 0;
+  let bMax = 0;
+  for (const h of rosterA) {
+    const mh = Math.max(1, Math.floor(Number(h.maxHp ?? 1)));
+    aMax += mh;
+    aHpById.set(String(h.id), mh);
+  }
+  for (const h of rosterB) {
+    const mh = Math.max(1, Math.floor(Number(h.maxHp ?? 1)));
+    bMax += mh;
+    bHpById.set(String(h.id), mh);
+  }
 
   const slice = (battle?.log ?? []).slice(0, visibleLog);
   for (const e of slice) {
-    if (e?.t === "hero_down") {
-      if (e.side === "A") {
-        if (rosterA[aIdx]?.name === e.heroName) {
-          aIdx = Math.min(rosterA.length - 1, aIdx + 1);
-          aHp = Math.max(1, Math.floor(Number(rosterA[aIdx]?.maxHp ?? 1)));
-        }
-      } else if (e.side === "B") {
-        if (rosterB[bIdx]?.name === e.heroName) {
-          bIdx = Math.min(rosterB.length - 1, bIdx + 1);
-          bHp = Math.max(1, Math.floor(Number(rosterB[bIdx]?.maxHp ?? 1)));
-        }
-      }
-      continue;
-    }
-
     if (e?.t === "action") {
-      // Targets are always "front alive" in our MVP rules, so keep frontline consistent with log.
+      const tid = String(e.targetHeroId ?? "");
+      const after = Math.max(0, Number(e.targetHpAfter ?? 0));
       if (e.side === "A") {
         // A hits B
-        const tgt = String(e.targetName ?? "");
-        const j = rosterB.findIndex((x) => x.name === tgt);
-        if (j >= 0) bIdx = j;
-        bHp = Math.max(0, Number(e.targetHpAfter ?? bHp));
+        if (bHpById.has(tid)) bHpById.set(tid, after);
       } else if (e.side === "B") {
-        const tgt = String(e.targetName ?? "");
-        const j = rosterA.findIndex((x) => x.name === tgt);
-        if (j >= 0) aIdx = j;
-        aHp = Math.max(0, Number(e.targetHpAfter ?? aHp));
+        if (aHpById.has(tid)) aHpById.set(tid, after);
       }
       continue;
     }
 
     if (e?.t === "heal") {
-      // MVP: heals front ally; still update by name.
-      const tgt = String(e.targetName ?? "");
-      const j = rosterA.findIndex((x) => x.name === tgt);
-      if (j >= 0) aIdx = j;
-      aHp = Math.max(0, Number(e.targetHpAfter ?? aHp));
+      const tid = String(e.targetHeroId ?? "");
+      const after = Math.max(0, Number(e.targetHpAfter ?? 0));
+      if (aHpById.has(tid)) aHpById.set(tid, after);
     }
   }
 
-  const aName = rosterA[aIdx]?.name ?? "我方";
-  const bName = rosterB[bIdx]?.name ?? "敌方";
-  const aMax = Math.max(1, Math.floor(Number(rosterA[aIdx]?.maxHp ?? 1)));
-  const bMax = Math.max(1, Math.floor(Number(rosterB[bIdx]?.maxHp ?? 1)));
-  return { aName, bName, aHp, bHp, aMax, bMax };
+  let aHp = 0;
+  let bHp = 0;
+  for (const v of aHpById.values()) aHp += v;
+  for (const v of bHpById.values()) bHp += v;
+
+  return {
+    aName: "我方队伍",
+    bName: "敌方队伍",
+    aHp,
+    bHp,
+    aMax: Math.max(1, aMax),
+    bMax: Math.max(1, bMax)
+  };
 }
 
 export function App() {
@@ -146,6 +142,7 @@ export function App() {
   const [playing, setPlaying] = useState(false);
   const [anim, setAnim] = useState<{ a: boolean; b: boolean; ta: boolean; tb: boolean } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const logRef = useRef<HTMLDivElement | null>(null);
 
   const heroOptions = useMemo(() => {
     return heroes.map((h) => {
@@ -223,6 +220,15 @@ export function App() {
     }, ms);
     return () => window.clearInterval(t);
   }, [battle, playing, playSpeed, visibleLog]);
+
+  useEffect(() => {
+    if (!battle) return;
+    if (!playing) return;
+    const el = logRef.current;
+    if (!el) return;
+    // Keep latest lines visible during playback.
+    el.scrollTop = el.scrollHeight;
+  }, [battle?.battleId, visibleLog, playing]);
 
   async function doAuth() {
     setBusy(true);
@@ -567,7 +573,7 @@ export function App() {
                 <div className="arena" style={{ marginBottom: 10 }}>
                   {battle?.scene ? (
                     (() => {
-                      const f = computeFrontline(battle, visibleLog);
+                      const f = computeTeamBars(battle, visibleLog);
                       const pPct = Math.max(0, Math.min(1, f.aHp / f.aMax));
                       const ePct = Math.max(0, Math.min(1, f.bHp / f.bMax));
                       return (
@@ -648,7 +654,7 @@ export function App() {
                   <span className="pill mono">{battle ? `日志 ${visibleLog}/${battle.log.length}` : "日志 0/0"}</span>
                 </div>
 
-                <div className="log">
+                <div className="log" ref={logRef}>
                   {(battle?.log ?? []).slice(0, visibleLog).map((e, i) => (
                     <div
                       className={`logLine ${e?.t === "battle_end" ? "end" : e?.side === "A" ? "a" : e?.side === "B" ? "b" : ""}`}

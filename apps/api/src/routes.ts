@@ -355,8 +355,8 @@ export function installRoutes(app: FastifyInstance, db: Db) {
     const inputSnapshot = { teamA, teamB, config };
     const resultSummary = { winner: result.winner, turns: result.turns };
     const scene = {
-      rosterA: teamA.heroes.map((h: any) => ({ name: String(h.name), maxHp: Number(h.stats?.hp ?? 1) })),
-      rosterB: (teamB.heroes ?? []).map((h: any) => ({ name: String(h.name), maxHp: Number(h.stats?.hp ?? 1) }))
+      rosterA: teamA.heroes.map((h: any) => ({ id: String(h.id), name: String(h.name), maxHp: Number(h.stats?.hp ?? 1) })),
+      rosterB: (teamB.heroes ?? []).map((h: any) => ({ id: String(h.id), name: String(h.name), maxHp: Number(h.stats?.hp ?? 1) }))
     };
 
     db.prepare(
@@ -525,8 +525,8 @@ export function installRoutes(app: FastifyInstance, db: Db) {
     const inputSnapshot = { teamA, teamB, config };
     const resultSummary = { winner: result.winner, turns: result.turns };
     const scene = {
-      rosterA: teamA.heroes.map((h: any) => ({ name: String(h.name), maxHp: Number(h.stats?.hp ?? 1) })),
-      rosterB: (teamB.heroes ?? []).map((h: any) => ({ name: String(h.name), maxHp: Number(h.stats?.hp ?? 1) }))
+      rosterA: teamA.heroes.map((h: any) => ({ id: String(h.id), name: String(h.name), maxHp: Number(h.stats?.hp ?? 1) })),
+      rosterB: (teamB.heroes ?? []).map((h: any) => ({ id: String(h.id), name: String(h.name), maxHp: Number(h.stats?.hp ?? 1) }))
     };
 
     db.prepare(
