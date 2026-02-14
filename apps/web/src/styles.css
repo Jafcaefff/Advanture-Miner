@@ -21,6 +21,7 @@
   --radius: 18px;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --pix: "Pixelify Sans", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  --bottom-nav-h: 104px;
 }
 
 * {
@@ -62,13 +63,13 @@ a {
 .wrap {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 18px 14px 56px;
+  padding: 18px 14px calc(var(--bottom-nav-h) + 36px);
   animation: enter 220ms steps(8, end) both;
 }
 
 @media (max-width: 720px) {
   .wrap {
-    padding-bottom: 120px;
+    padding-bottom: calc(var(--bottom-nav-h) + 48px);
   }
 }
 
@@ -138,7 +139,8 @@ a {
   right: 0;
   bottom: 0;
   z-index: 12;
-  padding: 10px 12px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  min-height: var(--bottom-nav-h);
   background: linear-gradient(180deg, transparent, rgba(12, 11, 18, 0.72), rgba(12, 11, 18, 0.95));
   pointer-events: none;
 }
@@ -211,12 +213,12 @@ a {
 }
 
 .panelTall {
-  height: min(760px, calc(100vh - 220px));
+  height: min(760px, calc(100dvh - var(--bottom-nav-h) - 190px));
 }
 
 @media (max-width: 720px) {
   .panelTall {
-    height: min(760px, calc(100vh - 260px));
+    height: min(760px, calc(100dvh - var(--bottom-nav-h) - 230px));
   }
 }
 
