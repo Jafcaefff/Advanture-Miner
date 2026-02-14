@@ -1,4 +1,6 @@
 import type { Db } from "./db.js";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 type CatalogHero = {
   id: string;
@@ -8,7 +10,7 @@ type CatalogHero = {
   tags?: any[];
 };
 
-const CATALOG: CatalogHero[] = [
+const FALLBACK_CATALOG: CatalogHero[] = [
   {
     id: "hero_demo_001",
     name: "Swordsman",
@@ -29,7 +31,7 @@ const CATALOG: CatalogHero[] = [
   }
 ];
 
-const NPC_TEAMS = [
+const FALLBACK_NPC_TEAMS = [
   {
     id: "stage_1_boss",
     name: "Stage 1 Boss",
@@ -47,33 +49,60 @@ const NPC_TEAMS = [
   }
 ];
 
-export function seedContent(db: Db) {
+function loadJsonFile<T>(path: string): T | null {
+  try {
+    const txt = readFileSync(path, "utf8");
+    return JSON.parse(txt) as T;
+  } catch {
+    return null;
+  }
+}
+
+export function seedContent(db: Db, contentDir: string) {
   const now = new Date().toISOString();
 
-  const countCatalog = db.prepare("SELECT COUNT(1) AS n FROM heroes_catalog").get() as any;
-  if (Number(countCatalog?.n ?? 0) === 0) {
-    const ins = db.prepare(
-      "INSERT INTO heroes_catalog (id, name, base_stats_json, skills_json, tags_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    );
-    for (const h of CATALOG) {
-      ins.run(h.id, h.name, JSON.stringify(h.baseStats), JSON.stringify(h.skills), JSON.stringify(h.tags ?? []), now, now);
-    }
+  const heroesPath = resolve(process.cwd(), contentDir, "heroes.json");
+  const npcTeamsPath = resolve(process.cwd(), contentDir, "npc_teams.json");
+
+  const catalog = loadJsonFile<CatalogHero[]>(heroesPath) ?? FALLBACK_CATALOG;
+  const npcTeams = loadJsonFile<any[]>(npcTeamsPath) ?? FALLBACK_NPC_TEAMS;
+
+  // Upsert so changing json updates DB without wiping user data.
+  const upsertCatalog = db.prepare(
+    `
+    INSERT INTO heroes_catalog (id, name, base_stats_json, skills_json, tags_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      base_stats_json = excluded.base_stats_json,
+      skills_json = excluded.skills_json,
+      tags_json = excluded.tags_json,
+      updated_at = excluded.updated_at
+  `
+  );
+  for (const h of catalog) {
+    upsertCatalog.run(h.id, h.name, JSON.stringify(h.baseStats), JSON.stringify(h.skills), JSON.stringify(h.tags ?? []), now, now);
   }
 
-  const countNpc = db.prepare("SELECT COUNT(1) AS n FROM npc_teams").get() as any;
-  if (Number(countNpc?.n ?? 0) === 0) {
-    const ins = db.prepare("INSERT INTO npc_teams (id, name, team_snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)");
-    for (const t of NPC_TEAMS) {
-      ins.run(t.id, t.name, JSON.stringify(t.teamSnapshot), now, now);
-    }
+  const upsertNpc = db.prepare(
+    `
+    INSERT INTO npc_teams (id, name, team_snapshot_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      team_snapshot_json = excluded.team_snapshot_json,
+      updated_at = excluded.updated_at
+  `
+  );
+  for (const t of npcTeams) {
+    upsertNpc.run(String(t.id), String(t.name), JSON.stringify((t as any).teamSnapshot), now, now);
   }
 }
 
 export function starterCatalogIds(): string[] {
   // Give the user 25 heroes by repeating the small demo set.
-  const ids = CATALOG.map((h) => h.id);
+  const ids = FALLBACK_CATALOG.map((h) => h.id);
   const out: string[] = [];
   while (out.length < 25) out.push(ids[out.length % ids.length]!);
   return out;
 }
-

@@ -38,7 +38,7 @@ app.addHook("preHandler", async (req) => {
 
 const db = openDb(env.DB_PATH);
 migrate(db);
-seedContent(db);
+seedContent(db, env.CONTENT_DIR);
 
 installRoutes(app, db);
 

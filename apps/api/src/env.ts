@@ -5,7 +5,8 @@ const EnvSchema = z.object({
   HOST: z.string().default("127.0.0.1"),
   JWT_SECRET: z.string().min(16).default("dev-only-change-me-please"),
   DB_PATH: z.string().default("data/app.db"),
-  CORS_ORIGIN: z.string().default("*")
+  CORS_ORIGIN: z.string().default("*"),
+  CONTENT_DIR: z.string().default("apps/api/content")
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -18,4 +19,3 @@ export function loadEnv(): Env {
   }
   return parsed.data;
 }
-
