@@ -59,6 +59,7 @@ export function App() {
   const [teamVersion, setTeamVersion] = useState<number | null>(null);
   const [teamName, setTeamName] = useState("Main");
   const [heroIds, setHeroIds] = useState<string[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState<number>(0); // 0-based
 
   const [busy, setBusy] = useState(false);
   const [battle, setBattle] = useState<SimResult | null>(null);
@@ -96,6 +97,7 @@ export function App() {
       setTeamName(team.name);
       setHeroIds(team.heroIds);
       setTeamVersion(team.version);
+      setSelectedSlot((s) => Math.min(s, Math.max(0, team.heroIds.length - 1)));
     }
   }
 
@@ -169,6 +171,22 @@ export function App() {
       next[j] = t;
       return next;
     });
+  }
+
+  function setHeroAt(slot: number, heroId: string) {
+    setHeroIds((xs) => {
+      if (slot < 0 || slot >= xs.length) return xs;
+      const next = xs.slice();
+      next[slot] = heroId;
+      return next;
+    });
+  }
+
+  function getHeroLabelById(heroId: string): string {
+    const h = heroes.find((x) => x.id === heroId);
+    if (!h) return heroId;
+    const nm = catalog[h.catalogId] ?? h.catalogId;
+    return `${nm} Lv${h.level}`;
   }
 
   if (!token) {
@@ -265,21 +283,49 @@ export function App() {
                   挑战 stage_1_boss
                 </button>
                 <span className="pill mono">站位越靠前越优先</span>
+                <span className="pill mono">Shift+点格子: 交换</span>
               </div>
               {err ? <div className="errorBox mono">{err}</div> : null}
             </div>
             <div style={{ height: 12 }} />
-            <div className="teamList">
-              {heroIds.map((hid, idx) => (
-                <div className="slot" key={`${idx}-${hid}`}>
-                  <div className="idx">{String(idx + 1).padStart(2, "0")}</div>
-                  <div>
-                    <select
-                      value={hid}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setHeroIds((xs) => xs.map((x, i) => (i === idx ? v : x)));
+
+            <div className="formationWrap">
+              <div className="formation">
+                {Array.from({ length: Math.min(25, heroIds.length) }, (_, idx) => {
+                  const hid = heroIds[idx]!;
+                  const label = getHeroLabelById(hid);
+                  const sel = idx === selectedSlot;
+                  return (
+                    <button
+                      key={`${idx}-${hid}`}
+                      className={`tile ${sel ? "sel" : ""} ${idx === 0 ? "front" : ""}`}
+                      disabled={busy}
+                      onClick={(e) => {
+                        if ((e as any).shiftKey && selectedSlot !== idx) {
+                          swap(selectedSlot, idx);
+                        }
+                        setSelectedSlot(idx);
                       }}
+                      title={label}
+                    >
+                      <span className="n">{String(idx + 1).padStart(2, "0")}</span>
+                      <span className="nm">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="editor">
+                <div className="pill mono">
+                  slot={String(selectedSlot + 1).padStart(2, "0")} · {heroIds[selectedSlot] ? getHeroLabelById(heroIds[selectedSlot]!) : "-"}
+                </div>
+                <div className="row">
+                  <div className="field">
+                    <label>选择英雄</label>
+                    <select
+                      value={heroIds[selectedSlot] ?? ""}
+                      onChange={(e) => setHeroAt(selectedSlot, e.target.value)}
+                      disabled={busy || heroIds.length === 0}
                     >
                       {heroOptions.map((o) => (
                         <option value={o.id} key={o.id}>
@@ -288,16 +334,16 @@ export function App() {
                       ))}
                     </select>
                   </div>
-                  <div className="ctl">
-                    <button onClick={() => swap(idx, idx - 1)} disabled={busy || idx === 0}>
-                      ▲
+                  <div className="stack">
+                    <button onClick={() => swap(selectedSlot, selectedSlot - 1)} disabled={busy || selectedSlot === 0}>
+                      前移 ▲
                     </button>
-                    <button onClick={() => swap(idx, idx + 1)} disabled={busy || idx === heroIds.length - 1}>
-                      ▼
+                    <button onClick={() => swap(selectedSlot, selectedSlot + 1)} disabled={busy || selectedSlot >= heroIds.length - 1}>
+                      后移 ▼
                     </button>
                   </div>
                 </div>
-              ))}
+              </div>
             </div>
           </div>
         </div>
